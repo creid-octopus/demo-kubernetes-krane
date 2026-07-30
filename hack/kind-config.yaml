@@ -1,0 +1,13 @@
+# Single-node kind cluster. containerdConfigPatches wires up the local
+# registry created by local-cluster.sh (standard kind "local registry"
+# recipe) so images pushed to localhost:5001 are pullable from inside
+# the cluster without a real ECR/GHCR round-trip.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: demo-krane
+containerdConfigPatches:
+  - |-
+    [plugins."io.containerd.grpc.v1.cri".registry.mirrors."localhost:5001"]
+      endpoint = ["http://kind-registry:5000"]
+nodes:
+  - role: control-plane

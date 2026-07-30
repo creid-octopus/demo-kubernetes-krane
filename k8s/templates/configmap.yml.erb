@@ -1,0 +1,23 @@
+<%#
+  ConfigMap — stands in for typical app-level config (region, env,
+  feature toggles, killswitch keys). Values come from plain ENV vars
+  exported by scripts/deploy.sh before calling `krane render`, the same
+  mechanism used for REVISION.
+%>
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: <%= ENV['APP_NAME'] || 'demo-app' %>-config
+  namespace: <%= ENV.fetch('NAMESPACE') %>
+  labels:
+    app: <%= ENV['APP_NAME'] || 'demo-app' %>
+    region: <%= ENV.fetch('REGION') %>
+    environment: <%= ENV.fetch('ENVIRONMENT') %>
+data:
+  REGION: "<%= ENV.fetch('REGION') %>"
+  ENVIRONMENT: "<%= ENV.fetch('ENVIRONMENT') %>"
+  LOG_LEVEL: "<%= ENV['LOG_LEVEL'] || 'info' %>"
+  # Placeholder for the killswitch pattern described in the deployment
+  # notes: the app would read a key here to disable a feature without a
+  # deploy. Not wired to app behavior in this minified demo.
+  KILLSWITCH_DISABLE: ""

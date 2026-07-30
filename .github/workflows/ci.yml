@@ -1,0 +1,96 @@
+# Continuous integration — runs on every push and pull request.
+#
+# Mirrors a typical Buildkite-style CI setup (test, build image) but goes
+# one step further: it spins up an ephemeral kind cluster in the runner,
+# loads the just-built image, and runs the *exact* krane render/deploy
+# commands scripts/deploy.sh would run — a convergence smoke test. Most
+# CI setups built around krane don't check whether the rendered manifests
+# actually deploy; this catches template/render errors before merge
+# instead of at deploy time.
+#
+# For image publishing see build-image.yml (main only).
+# For Octopus integration see publish.yml (currently a dry-run stub).
+
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+env:
+  IMAGE_REPO: demo-kubernetes-krane-app
+  VERSION_MAJOR: "0"
+  VERSION_MINOR: "1"
+
+jobs:
+  build-and-smoke-deploy:
+    name: Build image + krane smoke deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # ── Step 1: Compute a version for this run ───────────────────────────
+      - name: Compute build metadata
+        id: meta
+        run: |
+          SHORT_SHA="${GITHUB_SHA::7}"
+          VERSION="${{ env.VERSION_MAJOR }}.${{ env.VERSION_MINOR }}.${{ github.run_number }}-${SHORT_SHA}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      # ── Step 2: Build the image (debug target, local only) ──────────────
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build image (dry run)
+        uses: docker/build-push-action@v7
+        with:
+          context: app
+          push: false
+          load: true
+          target: debug
+          tags: ${{ env.IMAGE_REPO }}:${{ steps.meta.outputs.version }}
+          build-args: |
+            APP_VERSION=${{ steps.meta.outputs.version }}
+            APP_BRANCH=${{ github.ref_name }}
+            APP_BUILD=${{ github.run_number }}
+            APP_COMMIT_SHA=${{ github.sha }}
+
+      # ── Step 3: Spin up an ephemeral kind cluster ────────────────────────
+      - name: Create kind cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: demo-krane-ci
+          wait: 120s
+
+      - name: Load image into kind
+        run: kind load docker-image "${{ env.IMAGE_REPO }}:${{ steps.meta.outputs.version }}" --name demo-krane-ci
+
+      - name: Create CI namespace
+        run: kubectl create namespace app-ci --dry-run=client -o yaml | kubectl apply -f -
+
+      # ── Step 4: Install krane ─────────────────────────────────────────────
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+          bundler-cache: true
+          working-directory: .
+
+      # ── Step 5: Render + deploy — the actual smoke test ──────────────────
+      # Same command shape as scripts/deploy.sh, run directly here so the
+      # workflow output is easy to read in the Actions UI.
+      - name: krane render | krane deploy (smoke test)
+        run: |
+          set -a
+          source k8s/bindings/ci.env
+          set +a
+          export REVISION="${{ steps.meta.outputs.version }}"
+          export IMAGE_REPO="${{ env.IMAGE_REPO }}"
+          bundle exec krane render -f k8s/templates \
+            | bundle exec krane deploy "$NAMESPACE" kind-demo-krane-ci -f - --global-timeout 180s
+
+      - name: Show what's running (debug aid on failure)
+        if: always()
+        run: kubectl -n app-ci get all

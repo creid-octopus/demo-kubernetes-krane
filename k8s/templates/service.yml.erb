@@ -1,0 +1,20 @@
+<%#
+  Service in front of the web Deployment. (Ingress is intentionally
+  excluded from this minified set — see PLAN.md.)
+%>
+apiVersion: v1
+kind: Service
+metadata:
+  name: <%= ENV['APP_NAME'] || 'demo-app' %>-web
+  namespace: <%= ENV.fetch('NAMESPACE') %>
+  labels:
+    app: <%= ENV['APP_NAME'] || 'demo-app' %>
+    region: <%= ENV.fetch('REGION') %>
+spec:
+  selector:
+    app: <%= ENV['APP_NAME'] || 'demo-app' %>
+    process: web
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080

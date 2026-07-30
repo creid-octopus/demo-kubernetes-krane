@@ -1,0 +1,51 @@
+<%#
+  Worker Deployment — same image as web, different command. Demonstrates
+  krane applying multiple Deployments from one image/tag in a single pass
+  — the common "several Deployments per app (web, workers, etc.)" shape.
+%>
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: <%= ENV['APP_NAME'] || 'demo-app' %>-worker
+  namespace: <%= ENV.fetch('NAMESPACE') %>
+  labels:
+    app: <%= ENV['APP_NAME'] || 'demo-app' %>
+    process: worker
+    region: <%= ENV.fetch('REGION') %>
+spec:
+  replicas: <%= ENV['REPLICAS_WORKER'] || 1 %>
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: <%= ENV['APP_NAME'] || 'demo-app' %>
+      process: worker
+  template:
+    metadata:
+      labels:
+        app: <%= ENV['APP_NAME'] || 'demo-app' %>
+        process: worker
+        region: <%= ENV.fetch('REGION') %>
+    spec:
+      containers:
+        - name: worker
+          image: <%= ENV.fetch('IMAGE_REPO') %>:<%= ENV.fetch('REVISION') %>
+          # See deployment-web.yml.erb — args, not command, for the same
+          # ENTRYPOINT/distroless reason.
+          args: ["src/worker.js"]
+          envFrom:
+            - configMapRef:
+                name: <%= ENV['APP_NAME'] || 'demo-app' %>-config
+          env:
+            - name: NAMESPACE
+              value: "<%= ENV.fetch('NAMESPACE') %>"
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          resources:
+            requests:
+              cpu: <%= ENV['CPU_REQUEST'] || '50m' %>
+              memory: <%= ENV['MEM_REQUEST'] || '64Mi' %>
+            limits:
+              cpu: <%= ENV['CPU_LIMIT'] || '200m' %>
+              memory: <%= ENV['MEM_LIMIT'] || '128Mi' %>

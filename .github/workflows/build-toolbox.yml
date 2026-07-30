@@ -1,0 +1,76 @@
+# Builds and pushes the Kubernetes agent script-pod tooling image
+# (tooling/Dockerfile) to GHCR. Manual dispatch only — this image
+# changes rarely (a kubectl bump, an extra CLI tool) so there's no
+# reason to rebuild it on every push the way build-image.yml does for
+# the app image.
+#
+# Uses the same built-in GITHUB_TOKEN as build-image.yml — no PAT or
+# local docker login needed.
+
+name: Build toolbox image
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to publish (e.g. 1, 2, latest)"
+        type: string
+        required: true
+        default: "1"
+      kubectl_version:
+        description: "kubectl version to bake in (must satisfy AKS's supported minor version range)"
+        type: string
+        required: false
+        default: "v1.31.0"
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}-toolbox
+
+jobs:
+  build:
+    name: Build & push toolbox image
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push toolbox image
+        id: push
+        uses: docker/build-push-action@v7
+        with:
+          context: tooling
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ inputs.tag }}
+          build-args: |
+            KUBECTL_VERSION=${{ inputs.kubectl_version }}
+
+      - name: Summary
+        run: |
+          {
+            echo "### Toolbox image — \`${{ inputs.tag }}\`"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| **Image** | \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ inputs.tag }}\` |"
+            echo "| **Digest** | \`${{ steps.push.outputs.digest }}\` |"
+            echo "| **kubectl** | \`${{ inputs.kubectl_version }}\` |"
+            echo ""
+            echo "New GHCR packages default to **private** — set this one to"
+            echo "public in package settings, or AKS will hit the same"
+            echo "permission-denied pulling it."
+          } >> "$GITHUB_STEP_SUMMARY"

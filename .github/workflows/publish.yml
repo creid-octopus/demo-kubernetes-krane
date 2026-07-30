@@ -1,0 +1,84 @@
+# Octopus integration — STUB. Stands in for "Shipit tracks CI status, a
+# dev clicks Deploy, Shipit shells out to the deploy script" (Deployment
+# Flow.md, steps 3-5), rebuilt on Octopus instead of Shipit.
+#
+# Deliberately not wired to a real Octopus project yet. The local
+# krane/kind loop (scripts/deploy.sh, scripts/fan-out.sh) is the thing to
+# prove out first; wiring a real Octopus project before that's solid means
+# debugging two unknowns at once. Every step below mirrors the structure
+# of composite-development-loop/.github/workflows/publish.yml — swap
+# `run: echo` for the real `uses:` action once you're ready, the shape
+# won't change.
+#
+# When this goes live you'll need, at minimum:
+#   Secrets:   OCTOPUS_SERVER_URL, OCTOPUS_API_KEY, OCTOPUS_SPACE
+#   Variables: OCTOPUS_PROJECT
+# and a decision on regions-as-environments vs. regions-as-tenants
+# (see PLAN.md → Next steps) before the "Create release" /
+# "Deploy" steps below can target real regions.
+
+name: Publish (stub)
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "app/**"
+  workflow_dispatch:
+
+env:
+  OCTOPUS_PACKAGE: demo-kubernetes-krane-app
+  VERSION_MAJOR: "0"
+  VERSION_MINOR: "1"
+
+jobs:
+  publish:
+    name: Build & publish (dry run)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Compute build metadata
+        id: meta
+        run: |
+          VERSION="${{ env.VERSION_MAJOR }}.${{ env.VERSION_MINOR }}.${{ github.run_number }}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      # ── Step 1: Push package to Octopus (stub) ──────────────────────────
+      # Real version: OctopusDeploy/push-package-action@v4, packaging
+      # app/ the same way build-image.yml tags the image, keyed to the
+      # same version.
+      - name: Push package to Octopus [stub]
+        run: |
+          echo "Would push package: ${{ env.OCTOPUS_PACKAGE }} @ ${{ steps.meta.outputs.version }}"
+
+      # ── Step 2: Push build information (stub) ────────────────────────────
+      # Real version: OctopusDeploy/push-build-information-action@v4
+      - name: Push build information [stub]
+        run: echo "Would push build info for commit ${{ github.sha }}"
+
+      # ── Step 3: Create Octopus release (stub) ────────────────────────────
+      # Real version: OctopusDeploy/create-release-action@v4
+      - name: Create Octopus release [stub]
+        run: echo "Would create release ${{ steps.meta.outputs.version }} in project ${{ vars.OCTOPUS_PROJECT }}"
+
+      # ── Step 4: Deploy (stub) ─────────────────────────────────────────────
+      # Real version: OctopusDeploy/deploy-release-action@v4. This is the
+      # step that eventually replaces "a dev clicks Deploy in Shipit" —
+      # once real, Octopus becomes the click-to-deploy surface, not GitHub
+      # Actions. Until then, that click-to-deploy step is `make deploy`
+      # against your local kind cluster.
+      - name: Deploy to Development [stub]
+        run: echo "Would deploy ${{ steps.meta.outputs.version }} to Development"
+
+      - name: Summary
+        run: |
+          {
+            echo "### Publish (stub) — \`${{ steps.meta.outputs.version }}\`"
+            echo ""
+            echo "Nothing was actually pushed to Octopus — this workflow is a"
+            echo "placeholder until a real Octopus project is wired in. See"
+            echo "PLAN.md → Next steps."
+          } >> "$GITHUB_STEP_SUMMARY"

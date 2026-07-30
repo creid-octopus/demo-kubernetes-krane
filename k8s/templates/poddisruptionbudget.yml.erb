@@ -1,0 +1,19 @@
+<%#
+  PDB on the web Deployment — part of a typical krane-rendered set per
+  app, included here to demonstrate krane converging a non-Deployment
+  resource alongside the Deployments in the same apply.
+%>
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: <%= ENV['APP_NAME'] || 'demo-app' %>-web-pdb
+  namespace: <%= ENV.fetch('NAMESPACE') %>
+  labels:
+    app: <%= ENV['APP_NAME'] || 'demo-app' %>
+    region: <%= ENV.fetch('REGION') %>
+spec:
+  minAvailable: <%= ENV['PDB_MIN_AVAILABLE'] || 1 %>
+  selector:
+    matchLabels:
+      app: <%= ENV['APP_NAME'] || 'demo-app' %>
+      process: web

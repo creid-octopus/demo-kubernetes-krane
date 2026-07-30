@@ -1,0 +1,68 @@
+<%#
+  Web Deployment — one of "several Deployments per app" krane applies
+  together. Image tag is ENV['REVISION']: what actually ships new code is
+  this tag changing; Kubernetes performs the rolling update, krane just
+  applies-and-watches.
+%>
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: <%= ENV['APP_NAME'] || 'demo-app' %>-web
+  namespace: <%= ENV.fetch('NAMESPACE') %>
+  labels:
+    app: <%= ENV['APP_NAME'] || 'demo-app' %>
+    process: web
+    region: <%= ENV.fetch('REGION') %>
+spec:
+  replicas: <%= ENV['REPLICAS_WEB'] || 1 %>
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: <%= ENV['APP_NAME'] || 'demo-app' %>
+      process: web
+  template:
+    metadata:
+      labels:
+        app: <%= ENV['APP_NAME'] || 'demo-app' %>
+        process: web
+        region: <%= ENV.fetch('REGION') %>
+    spec:
+      containers:
+        - name: web
+          image: <%= ENV.fetch('IMAGE_REPO') %>:<%= ENV.fetch('REVISION') %>
+          # args, not command — the image's own ENTRYPOINT already points
+          # at the right `node` binary (bare on debug, absolute path on
+          # distroless release); overriding it with a bare "node" command
+          # breaks distroless, where node isn't on $PATH.
+          args: ["src/server.js"]
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: <%= ENV['APP_NAME'] || 'demo-app' %>-config
+          env:
+            - name: NAMESPACE
+              value: "<%= ENV.fetch('NAMESPACE') %>"
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          resources:
+            requests:
+              cpu: <%= ENV['CPU_REQUEST'] || '50m' %>
+              memory: <%= ENV['MEM_REQUEST'] || '64Mi' %>
+            limits:
+              cpu: <%= ENV['CPU_LIMIT'] || '200m' %>
+              memory: <%= ENV['MEM_LIMIT'] || '128Mi' %>
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10

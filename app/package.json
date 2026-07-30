@@ -1,0 +1,14 @@
+{
+  "name": "demo-kubernetes-krane-app",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Minimal web+worker app used to demo a Krane-based deploy flow.",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "worker": "node src/worker.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
