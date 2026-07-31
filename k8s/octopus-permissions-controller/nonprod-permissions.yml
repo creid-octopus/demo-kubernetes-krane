@@ -10,6 +10,10 @@
 # names (apps, "", policy) — not apiVersion strings like apps/v1 — per
 # the real sample in the Octopus Permissions Controller repo:
 # https://github.com/OctopusDeploy/octopus-permissions-controller/blob/main/config/samples/v1beta1_clusterworkloadserviceaccount.yaml
+#
+# patch is included alongside update — `kubectl apply` (what krane calls
+# under the hood) always issues a PATCH, never a PUT. update and patch
+# are distinct RBAC verbs; granting update alone doesn't cover apply.
 
 # Broad read access in space `default` for anything in app-dev
 apiVersion: agent.octopus.com/v1beta1
@@ -57,13 +61,13 @@ spec:
     environments: [development]
   permissions:
     permissions:
-      - verbs: [get, list, create, update, delete]
+      - verbs: [get, list, create, update, patch, delete]
         apiGroups: [apps]
         resources: [deployments, replicasets, statefulsets, daemonsets]
-      - verbs: [get, list, create, update, delete]
+      - verbs: [get, list, create, update, patch, delete]
         apiGroups: [""]
         resources: [configmaps, services]
-      - verbs: [get, list, create, update, delete]
+      - verbs: [get, list, create, update, patch, delete]
         apiGroups: [policy]
         resources: [poddisruptionbudgets]
 
@@ -81,12 +85,12 @@ spec:
     environments: [test]
   permissions:
     permissions:
-      - verbs: [get, list, create, update, delete]
+      - verbs: [get, list, create, update, patch, delete]
         apiGroups: [apps]
         resources: [deployments, replicasets, statefulsets, daemonsets]
-      - verbs: [get, list, create, update, delete]
+      - verbs: [get, list, create, update, patch, delete]
         apiGroups: [""]
         resources: [configmaps, services]
-      - verbs: [get, list, create, update, delete]
+      - verbs: [get, list, create, update, patch, delete]
         apiGroups: [policy]
         resources: [poddisruptionbudgets]

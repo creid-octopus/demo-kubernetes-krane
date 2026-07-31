@@ -12,6 +12,10 @@
 # the real sample in the Octopus Permissions Controller repo:
 # https://github.com/OctopusDeploy/octopus-permissions-controller/blob/main/config/samples/v1beta1_clusterworkloadserviceaccount.yaml
 #
+# patch is included alongside update — `kubectl apply` (what krane calls
+# under the hood) always issues a PATCH, never a PUT. update and patch
+# are distinct RBAC verbs; granting update alone doesn't cover apply.
+#
 # Note: the aks-production target is also associated with a
 # "Meta-Production" environment in your instance — not included below
 # since it's not obviously tied to this app. Add a scope for it here if
@@ -48,13 +52,13 @@ spec:
     environments: [production]
   permissions:
     permissions:
-      - verbs: [get, list, create, update, delete]
+      - verbs: [get, list, create, update, patch, delete]
         apiGroups: [apps]
         resources: [deployments, replicasets, statefulsets, daemonsets]
-      - verbs: [get, list, create, update, delete]
+      - verbs: [get, list, create, update, patch, delete]
         apiGroups: [""]
         resources: [configmaps, services]
-      - verbs: [get, list, create, update, delete]
+      - verbs: [get, list, create, update, patch, delete]
         apiGroups: [policy]
         resources: [poddisruptionbudgets]
 
@@ -66,11 +70,17 @@ spec:
 # both (confirmed against the real CRD schema, not assumed):
 # https://github.com/OctopusDeploy/octopus-permissions-controller/blob/main/config/crd/bases/agent.octopus.com_clusterworkloadserviceaccounts.yaml
 #
-# 1. namespaces (get/list only, deliberately no create) — Namespace
+# 1. namespaces (get/list/patch, deliberately no create) — Namespace
 #    isn't a namespaced resource, so no WorkloadServiceAccount
-#    (namespace-scoped Role) can ever grant access to it. This is the
+#    (namespace-scoped Role) can ever grant access to it. patch is
+#    required even for the read-only-feeling case: `kubectl apply`
+#    always tries to patch in its last-applied-configuration annotation,
+#    even on an object that already matches — get alone can't satisfy
+#    that, but this namespace was never created via apply/create
+#    --save-config, so it's missing that annotation. This is the
 #    intentional demo point: the "Create namespace if not exists" step
-#    can check whether app-production exists, but can't create it — in
+#    succeeds against an already-existing app-production (patch), but
+#    still can't create one from scratch if it's missing — in
 #    production, namespace provisioning is an admin action, not
 #    something the deploy identity can do itself.
 #
@@ -93,7 +103,7 @@ spec:
     environments: [production]
   permissions:
     permissions:
-      - verbs: [get, list]
+      - verbs: [get, list, patch]
         apiGroups: [""]
         resources: [namespaces]
       - verbs: [get, list]
