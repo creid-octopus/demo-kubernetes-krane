@@ -14,8 +14,8 @@
 #   Secrets:   OCTOPUS_SERVER_URL, OCTOPUS_API_KEY, OCTOPUS_SPACE
 #   Variables: OCTOPUS_PROJECT
 # and a decision on regions-as-environments vs. regions-as-tenants
-# (see PLAN.md → Next steps) before the "Create release" /
-# "Deploy" steps below can target real regions.
+# (see ARCHITECTURE.md) before the "Create release" / "Deploy" steps
+# below can target real regions.
 
 name: Publish (stub)
 
@@ -80,5 +80,5 @@ jobs:
             echo ""
             echo "Nothing was actually pushed to Octopus — this workflow is a"
             echo "placeholder until a real Octopus project is wired in. See"
-            echo "PLAN.md → Next steps."
+            echo "ARCHITECTURE.md."
           } >> "$GITHUB_STEP_SUMMARY"

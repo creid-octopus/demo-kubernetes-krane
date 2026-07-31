@@ -9,14 +9,20 @@
 # provisioning is a separate, earlier step. See hack/local-cluster.sh.
 #
 # Usage:
-#   scripts/deploy.sh <bindings-file> <context> <revision> [image-repo]
+#   scripts/deploy.sh <bindings-file> <context> <revision> [image-repo] [namespace]
 #
-# image-repo is optional — if omitted, it comes from IMAGE_REPO in the
-# bindings file (each target declares its own correct image reference:
-# local kind uses the bare name it was `kind load`-ed under, a real
-# cluster needs the full registry path, e.g. ghcr.io/<owner>/<repo>).
-# Passing it explicitly here still wins over the bindings file, for
-# one-off overrides.
+# image-repo and namespace are both optional overrides — if omitted, each
+# comes from the bindings file (IMAGE_REPO / NAMESPACE respectively).
+# Passing either explicitly here wins over the bindings file. This is the
+# pattern for any bindings-file value that also needs to be a live
+# Octopus variable: keep a sane default in the bindings file for local/
+# kind runs, and let Octopus pass the real value as an explicit arg when
+# it wants to override it (e.g. Kubernetes.TargetNamespace, prompted at
+# deploy time for Production — see the deployment process). Without an
+# explicit override arg, a deploy-time Octopus variable change would only
+# affect steps that reference the variable directly (like "create
+# namespace if not exists"), not this script, since it only ever reads
+# whatever's in the bindings file.
 #
 # Example:
 #   scripts/deploy.sh k8s/bindings/development.env kind-demo-krane 1.0.7
@@ -24,10 +30,12 @@ set -euo pipefail
 
 # Set script usage args and defaults
 
-BINDINGS_FILE="${1:?usage: deploy.sh <bindings-file> <context> <revision> [image-repo]}"
-CONTEXT="${2:?usage: deploy.sh <bindings-file> <context> <revision> [image-repo]}"
-REVISION="${3:?usage: deploy.sh <bindings-file> <context> <revision> [image-repo]}"
+USAGE="usage: deploy.sh <bindings-file> <context> <revision> [image-repo] [namespace]"
+BINDINGS_FILE="${1:?$USAGE}"
+CONTEXT="${2:?$USAGE}"
+REVISION="${3:?$USAGE}"
 IMAGE_REPO_ARG="${4:-}"
+NAMESPACE_ARG="${5:-}"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TEMPLATE_DIR="$REPO_ROOT/k8s/templates"
@@ -50,22 +58,22 @@ set -a
 source "$BINDINGS_FILE"
 set +a
 
-# Precedence: explicit CLI arg > IMAGE_REPO from the bindings file >
-# bare local-kind fallback.
+# Same precedence for both: explicit CLI arg > bindings file value >
+# fallback (image-repo only — namespace has no safe fallback).
 IMAGE_REPO="${IMAGE_REPO_ARG:-${IMAGE_REPO:-demo-kubernetes-krane}}"
+NAMESPACE="${NAMESPACE_ARG:-${NAMESPACE:-}}"
 export REVISION IMAGE_REPO
 
-: "${NAMESPACE:?bindings file must set NAMESPACE}"
+: "${NAMESPACE:?bindings file must set NAMESPACE, or pass one as the 5th arg}"
 : "${REGION:?bindings file must set REGION}"
 
-# In a Kubernetes agent script pod there's no kubeconfig file on disk —
-# plain `kubectl` still works there because client-go auto-discovers
-# in-cluster config from $KUBERNETES_SERVICE_HOST/PORT + the mounted
-# ServiceAccount token. krane's Ruby kubeclient doesn't do that same
-# auto-discovery and still requires an actual kubeconfig file (confirmed
-# not supported: https://github.com/Shopify/krane/issues/729). If we're
-# running in-cluster and nothing has already set one up, build one from
-# the ServiceAccount's own mounted credentials and use it.
+# In a Kubernetes Agent script pod there's no kubeconfig file on disk —
+# plain `kubectl` still works there via client-go's in-cluster auto-
+# discovery ($KUBERNETES_SERVICE_HOST/PORT + the mounted ServiceAccount
+# token), but krane's Ruby kubeclient doesn't do that auto-discovery and
+# requires an actual kubeconfig file: https://github.com/Shopify/krane/issues/729.
+# If we're running in-cluster with no kubeconfig already set up, build
+# one from the ServiceAccount's mounted credentials.
 SA_DIR=/var/run/secrets/kubernetes.io/serviceaccount
 if [[ -z "${KUBECONFIG:-}" && ! -f "${HOME}/.kube/config" && -f "${SA_DIR}/token" ]]; then
   echo "→ no kubeconfig found but a ServiceAccount token is mounted — building an in-cluster kubeconfig"
@@ -84,17 +92,14 @@ fi
 
 echo "→ deploying ${IMAGE_REPO}:${REVISION} → namespace=${NAMESPACE} region=${REGION} context=${CONTEXT}"
 
-# 300s here is short on purpose for a fast local/demo loop — a real
-# production setup would likely want this in the 600-900s range. Bump
-# this back up once you're pointed at real clusters with real load.
+# 300s is short on purpose for a fast local/demo loop — bump to the
+# 600-900s range for a real production workload.
 #
-# --no-prune: krane's default prune behavior auto-discovers every
-# resource kind/CRD on the cluster and deletes anything of an
+# --no-prune: krane's default prune behavior deletes anything of an
 # allowlisted kind in this namespace that isn't part of the current
-# render — including objects it never created, like the Octopus
-# Permissions Controller's WorkloadServiceAccount (Octopus's own docs
-# say WSAs belong in the namespace you're deploying into). Granting
-# `delete` on that just to let prune succeed would let this deploy
-# identity delete its own RBAC grant, which is worse than not pruning.
+# render, including objects it never created — like the Permissions
+# Controller's own WorkloadServiceAccount, which lives in the same
+# namespace it's granting access to. Granting `delete` just to let prune
+# succeed would let this deploy identity delete its own RBAC grant.
 krane render -f "$TEMPLATE_DIR" \
   | krane deploy "$NAMESPACE" "$CONTEXT" -f - --global-timeout 300s --no-prune

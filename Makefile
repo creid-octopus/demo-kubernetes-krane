@@ -1,12 +1,10 @@
 .PHONY: cluster-up cluster-down build load deploy-dev deploy-us deploy-eu fan-out logs clean
 
 IMAGE_REPO ?= demo-kubernetes-krane-app
-# := (not ?=) — this must be a simply-expanded variable, evaluated exactly
-# once. With ?=/= (recursive expansion), $(shell date +%s) reruns on every
-# reference to $(REVISION), so `build` and `load` would tag/load two
-# different timestamps in the same invocation. A command-line override
-# (make deploy-dev REVISION=1.0.1) still takes precedence over this default
-# either way.
+# := evaluates $(shell date +%s) once. ?=/= would re-run it on every
+# reference to $(REVISION), so build/load would tag/load two different
+# timestamps in the same invocation. `make deploy-dev REVISION=1.0.1` still
+# overrides this default.
 REVISION   := dev-$(shell date +%s)
 CONTEXT    ?= kind-demo-krane
 

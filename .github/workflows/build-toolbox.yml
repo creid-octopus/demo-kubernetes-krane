@@ -71,6 +71,6 @@ jobs:
             echo "| **kubectl** | \`${{ inputs.kubectl_version }}\` |"
             echo ""
             echo "New GHCR packages default to **private** — set this one to"
-            echo "public in package settings, or AKS will hit the same"
-            echo "permission-denied pulling it."
+            echo "public in package settings, or the cluster will get a"
+            echo "permission-denied error pulling it."
           } >> "$GITHUB_STEP_SUMMARY"

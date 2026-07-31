@@ -4,9 +4,8 @@
 #
 # Must stay glibc-based (Ubuntu/Debian) — Calamari, the Octopus engine
 # that runs inside this container, is a .NET Core self-contained exe and
-# doesn't run on musl (Alpine). libicu is the dependency most commonly
-# missing; if you see "Couldn't find a valid ICU package installed on
-# the system", that's this.
+# doesn't run on musl (Alpine). libicu70 is required for Calamari to find
+# ICU at runtime.
 FROM ubuntu:22.04
 
 RUN apt-get update && \

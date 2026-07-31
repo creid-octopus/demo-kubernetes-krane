@@ -1,19 +1,12 @@
 # Kubernetes Agent permission scoping for the aks-nonprod cluster only —
-# see production-permissions.yml for the aks-production cluster.
+# see production-permissions.yml for aks-production and for the RBAC
+# format notes (lowercase verbs, bare apiGroups, why patch is required
+# alongside update) that apply equally here.
 #
 # Namespaces here match k8s/bindings/aks-nonprod-dev.env and
-# aks-nonprod-test.env. Environment scope values are lowercase slugs
-# (development, test), not the display names (Development, Test) —
-# WorkloadServiceAccount scope matching is by slug.
-#
-# verbs are lowercase (get/list/create...) and apiGroups are bare group
-# names (apps, "", policy) — not apiVersion strings like apps/v1 — per
-# the real sample in the Octopus Permissions Controller repo:
-# https://github.com/OctopusDeploy/octopus-permissions-controller/blob/main/config/samples/v1beta1_clusterworkloadserviceaccount.yaml
-#
-# patch is included alongside update — `kubectl apply` (what krane calls
-# under the hood) always issues a PATCH, never a PUT. update and patch
-# are distinct RBAC verbs; granting update alone doesn't cover apply.
+# aks-nonprod-test.env. `environments:` below uses Octopus's lowercase
+# environment slugs (development, test) — these are independent of each
+# .env file's own ENVIRONMENT value, which is just an app-level label.
 
 # Broad read access in space `default` for anything in app-dev
 apiVersion: agent.octopus.com/v1beta1

@@ -4,7 +4,8 @@ A minified, runnable stand-in for a Krane-based Kubernetes deploy flow
 (Shipit → Buildkite → Krane → EKS, per-region namespaces). Built to iterate
 on locally before wiring up a real Octopus Deploy project.
 
-See **[PLAN.md](./PLAN.md)** for what's modeled, what's stubbed, and why.
+See **[ARCHITECTURE.md](./ARCHITECTURE.md)** for what's modeled, what's
+stubbed, and why.
 
 ## Prerequisites
 
@@ -48,13 +49,21 @@ make cluster-down
 ## Layout
 
 ```
-app/                  minimal web + worker app, one Dockerfile, two targets
-k8s/templates/         krane .yml.erb templates (shared across envs/regions)
-k8s/bindings/          per-env/region .env files sourced before krane render
-scripts/deploy.sh       the "Shipit shells out to this" script
-scripts/fan-out.sh      multi-region parallel deploy
-scripts/regions.conf    region → context → bindings-file map
-hack/local-cluster.sh   kind cluster + local registry + namespace setup
-.github/workflows/      ci.yml (build + krane smoke-deploy), build-image.yml
-                        (push to GHCR), publish.yml (Octopus stub)
+app/                          minimal web + worker app, one Dockerfile, two targets
+k8s/templates/                 krane .yml.erb templates (shared across envs/regions)
+k8s/bindings/                  per-env/region .env files sourced before krane render
+k8s/octopus-permissions-controller/
+                                WorkloadServiceAccount / ClusterWorkloadServiceAccount
+                                RBAC scoping for the real AKS clusters
+scripts/deploy.sh               the "Shipit shells out to this" script
+scripts/fan-out.sh              multi-region parallel deploy
+scripts/regions.conf            region → context → bindings-file map
+hack/local-cluster.sh           kind cluster + local registry + namespace setup
+hack/kind-config.yaml           kind cluster config used by local-cluster.sh
+tooling/Dockerfile               Kubernetes Agent script-pod tooling image (krane, kubectl, az)
+.github/workflows/              ci.yml (build + krane smoke-deploy), build-image.yml
+                                (push app image to GHCR), build-toolbox.yml (push tooling
+                                image to GHCR, manual dispatch), publish.yml (Octopus stub)
+command-reference.md            Helm commands for cert-manager + agent tooling-image overrides
+Gemfile / Gemfile.lock          pins krane (installed via `bundle install`)
 ```
