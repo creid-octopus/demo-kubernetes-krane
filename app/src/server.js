@@ -23,7 +23,7 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`[web] listening on -  :${PORT} — version ${buildInfo().version}`);
+  console.log(`[web] listening on  :${PORT} — version ${buildInfo().version}`);
 });
 
 process.on("SIGTERM", () => {
