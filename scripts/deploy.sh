@@ -22,6 +22,8 @@
 #   scripts/deploy.sh k8s/bindings/development.env kind-demo-krane 1.0.7
 set -euo pipefail
 
+# Set script usage args and defaults
+
 BINDINGS_FILE="${1:?usage: deploy.sh <bindings-file> <context> <revision> [image-repo]}"
 CONTEXT="${2:?usage: deploy.sh <bindings-file> <context> <revision> [image-repo]}"
 REVISION="${3:?usage: deploy.sh <bindings-file> <context> <revision> [image-repo]}"

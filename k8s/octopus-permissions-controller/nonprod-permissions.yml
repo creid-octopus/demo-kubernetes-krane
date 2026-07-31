@@ -1,0 +1,88 @@
+# Kubernetes Agent permission scoping for the aks-nonprod cluster only —
+# see production-permissions.yml for the aks-production cluster.
+#
+# Namespaces/environments here match k8s/bindings/aks-nonprod-dev.env and
+# aks-nonprod-test.env, and the aks-nonprod target's actual configured
+# Octopus environments (Development, Test) confirmed against the
+# instance directly — not the app-level ENVIRONMENT value in the
+# bindings files, which is a separate, lowercase, app-config concern.
+
+# Broad read access in space `default` for anything in app-dev
+apiVersion: agent.octopus.com/v1beta1
+kind: WorkloadServiceAccount
+metadata:
+  name: dev-get-access
+  namespace: app-dev
+spec:
+  scope:
+    spaces: [default]
+  permissions:
+    permissions:
+      - verbs: ["GET", "LIST"]
+        apiGroups: ["*"]
+        resources: ["*"]
+
+---
+# Broad read access in space `default` for anything in app-test
+apiVersion: agent.octopus.com/v1beta1
+kind: WorkloadServiceAccount
+metadata:
+  name: test-get-access
+  namespace: app-test
+spec:
+  scope:
+    spaces: [default]
+  permissions:
+    permissions:
+      - verbs: ["GET", "LIST"]
+        apiGroups: ["*"]
+        resources: ["*"]
+
+---
+# Full deploy-process access, space `default` + Development environment,
+# app-dev namespace. Covers every resource kind the app's deployment
+# process actually renders (see k8s/templates/) — not just Deployments.
+apiVersion: agent.octopus.com/v1beta1
+kind: WorkloadServiceAccount
+metadata:
+  name: dev-full-access
+  namespace: app-dev
+spec:
+  scope:
+    spaces: [default]
+    environments: [Development]
+  permissions:
+    permissions:
+      - verbs: [GET, LIST, CREATE, UPDATE, DELETE]
+        apiGroups: [apps/v1]
+        resources: [deployments, replicasets, statefulsets, daemonsets]
+      - verbs: [GET, LIST, CREATE, UPDATE, DELETE]
+        apiGroups: [v1]
+        resources: [configmaps, services]
+      - verbs: [GET, LIST, CREATE, UPDATE, DELETE]
+        apiGroups: [policy/v1]
+        resources: [poddisruptionbudgets]
+
+---
+# Full deploy-process access, space `default` + Test environment,
+# app-test namespace. Same resource coverage as dev-full-access above.
+apiVersion: agent.octopus.com/v1beta1
+kind: WorkloadServiceAccount
+metadata:
+  name: test-full-access
+  namespace: app-test
+spec:
+  scope:
+    spaces: [default]
+    environments: [Test]
+  permissions:
+    permissions:
+      - verbs: [GET, LIST, CREATE, UPDATE, DELETE]
+        apiGroups: [apps/v1]
+        resources: [deployments, replicasets, statefulsets, daemonsets]
+      - verbs: [GET, LIST, CREATE, UPDATE, DELETE]
+        apiGroups: [v1]
+        resources: [configmaps, services]
+      - verbs: [GET, LIST, CREATE, UPDATE, DELETE]
+        apiGroups: [policy/v1]
+        resources: [poddisruptionbudgets]

@@ -1,0 +1,53 @@
+# Kubernetes Agent permission scoping for the aks-production cluster
+# only — see nonprod-permissions.yml for aks-nonprod. Moved out of that
+# file, where it was previously (incorrectly) mixed in with nonprod
+# resources.
+#
+# Namespace/environment here match k8s/bindings/aks-production.env and
+# the aks-production target's configured Octopus environment, Production.
+#
+# Note: the aks-production target is also associated with a
+# "Meta-Production" environment in your instance — not included below
+# since it's not obviously tied to this app. Add a scope for it here if
+# it should also get access to app-production.
+
+# Broad read access in space `default` for anything in app-production
+apiVersion: agent.octopus.com/v1beta1
+kind: WorkloadServiceAccount
+metadata:
+  name: production-get-access
+  namespace: app-production
+spec:
+  scope:
+    spaces: [default]
+  permissions:
+    permissions:
+      - verbs: ["GET", "LIST"]
+        apiGroups: ["*"]
+        resources: ["*"]
+
+---
+# Full deploy-process access, space `default` + Production environment,
+# app-production namespace. Covers every resource kind the app's
+# deployment process actually renders (see k8s/templates/) — not just
+# Deployments.
+apiVersion: agent.octopus.com/v1beta1
+kind: WorkloadServiceAccount
+metadata:
+  name: production-full-access
+  namespace: app-production
+spec:
+  scope:
+    spaces: [default]
+    environments: [production]
+  permissions:
+    permissions:
+      - verbs: [GET, LIST, CREATE, UPDATE, DELETE]
+        apiGroups: [apps/v1]
+        resources: [deployments, replicasets, statefulsets, daemonsets]
+      - verbs: [GET, LIST, CREATE, UPDATE, DELETE]
+        apiGroups: [v1]
+        resources: [configmaps, services]
+      - verbs: [GET, LIST, CREATE, UPDATE, DELETE]
+        apiGroups: [policy/v1]
+        resources: [poddisruptionbudgets]
