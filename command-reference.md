@@ -13,7 +13,6 @@ helm install \
   --set crds.enabled=true
 ```
 
-
 ## Helm value customizations (required for non-default agent tooling)
 
 [Docs](https://octopus.com/docs/kubernetes/targets/kubernetes-agent#agent-tooling)

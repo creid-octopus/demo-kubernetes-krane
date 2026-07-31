@@ -51,3 +51,27 @@ spec:
       - verbs: [GET, LIST, CREATE, UPDATE, DELETE]
         apiGroups: [policy/v1]
         resources: [poddisruptionbudgets]
+
+---
+# Cluster-scoped, deliberately GET/LIST only — Namespace isn't a
+# namespaced resource, so no WorkloadServiceAccount (namespace-scoped
+# Role) can ever grant access to it, regardless of what verbs it lists.
+# This is the intentional demo point: the "Create namespace if not
+# exists" step can check whether app-production exists, but can't create
+# it — in production, namespace provisioning is an admin action, not
+# something the deploy identity can do itself. Deploying against a
+# namespace that doesn't exist yet should fail here, not silently
+# succeed by creating one.
+apiVersion: agent.octopus.com/v1beta1
+kind: ClusterWorkloadServiceAccount
+metadata:
+  name: production-namespace-read
+spec:
+  scope:
+    spaces: [default]
+    environments: [production]
+  permissions:
+    permissions:
+      - verbs: ["GET", "LIST"]
+        apiGroups: [""]
+        resources: ["namespaces"]
