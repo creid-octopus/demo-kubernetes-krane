@@ -59,19 +59,34 @@ spec:
         resources: [poddisruptionbudgets]
 
 ---
-# Cluster-scoped, deliberately get/list only — Namespace isn't a
-# namespaced resource, so no WorkloadServiceAccount (namespace-scoped
-# Role) can ever grant access to it, regardless of what verbs it lists.
-# This is the intentional demo point: the "Create namespace if not
-# exists" step can check whether app-production exists, but can't create
-# it — in production, namespace provisioning is an admin action, not
-# something the deploy identity can do itself. Deploying against a
-# namespace that doesn't exist yet should fail here, not silently
-# succeed by creating one.
+# Cluster-scoped grants for aks-production. Three unrelated things live
+# here, all required at cluster scope regardless of app-level RBAC. Note
+# the third rule uses nonResourceURLs instead of apiGroups/resources —
+# per the CRD's own schema, a single rule can be one or the other, never
+# both (confirmed against the real CRD schema, not assumed):
+# https://github.com/OctopusDeploy/octopus-permissions-controller/blob/main/config/crd/bases/agent.octopus.com_clusterworkloadserviceaccounts.yaml
+#
+# 1. namespaces (get/list only, deliberately no create) — Namespace
+#    isn't a namespaced resource, so no WorkloadServiceAccount
+#    (namespace-scoped Role) can ever grant access to it. This is the
+#    intentional demo point: the "Create namespace if not exists" step
+#    can check whether app-production exists, but can't create it — in
+#    production, namespace provisioning is an admin action, not
+#    something the deploy identity can do itself.
+#
+# 2. customresourcedefinitions (get/list) — krane itself does a
+#    cluster-wide CRD discovery pass at startup (used for validating/
+#    pruning resource kinds), independent of anything this app deploys.
+#
+# 3. API discovery paths (get) — krane/kubectl hit the raw API surface
+#    (starting with "/") at startup to discover what the server supports
+#    before doing anything else. #2 and #3 are baseline krane/kubectl
+#    requirements in every environment, regardless of app-level
+#    permissions — not demo-specific like #1.
 apiVersion: agent.octopus.com/v1beta1
 kind: ClusterWorkloadServiceAccount
 metadata:
-  name: production-namespace-read
+  name: production-cluster-read
 spec:
   scope:
     spaces: [default]
@@ -81,3 +96,14 @@ spec:
       - verbs: [get, list]
         apiGroups: [""]
         resources: [namespaces]
+      - verbs: [get, list]
+        apiGroups: [apiextensions.k8s.io]
+        resources: [customresourcedefinitions]
+      - verbs: [get]
+        nonResourceURLs:
+          - "/"
+          - "/api"
+          - "/api/*"
+          - "/apis"
+          - "/apis/*"
+          - "/version"

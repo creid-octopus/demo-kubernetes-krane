@@ -87,5 +87,14 @@ echo "→ deploying ${IMAGE_REPO}:${REVISION} → namespace=${NAMESPACE} region=
 # 300s here is short on purpose for a fast local/demo loop — a real
 # production setup would likely want this in the 600-900s range. Bump
 # this back up once you're pointed at real clusters with real load.
+#
+# --no-prune: krane's default prune behavior auto-discovers every
+# resource kind/CRD on the cluster and deletes anything of an
+# allowlisted kind in this namespace that isn't part of the current
+# render — including objects it never created, like the Octopus
+# Permissions Controller's WorkloadServiceAccount (Octopus's own docs
+# say WSAs belong in the namespace you're deploying into). Granting
+# `delete` on that just to let prune succeed would let this deploy
+# identity delete its own RBAC grant, which is worse than not pruning.
 krane render -f "$TEMPLATE_DIR" \
-  | krane deploy "$NAMESPACE" "$CONTEXT" -f - --global-timeout 300s
+  | krane deploy "$NAMESPACE" "$CONTEXT" -f - --global-timeout 300s --no-prune
