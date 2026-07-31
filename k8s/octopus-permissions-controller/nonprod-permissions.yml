@@ -4,8 +4,12 @@
 # Namespaces here match k8s/bindings/aks-nonprod-dev.env and
 # aks-nonprod-test.env. Environment scope values are lowercase slugs
 # (development, test), not the display names (Development, Test) —
-# WorkloadServiceAccount scope matching is by slug, same fix already
-# applied to production-permissions.yml.
+# WorkloadServiceAccount scope matching is by slug.
+#
+# verbs are lowercase (get/list/create...) and apiGroups are bare group
+# names (apps, "", policy) — not apiVersion strings like apps/v1 — per
+# the real sample in the Octopus Permissions Controller repo:
+# https://github.com/OctopusDeploy/octopus-permissions-controller/blob/main/config/samples/v1beta1_clusterworkloadserviceaccount.yaml
 
 # Broad read access in space `default` for anything in app-dev
 apiVersion: agent.octopus.com/v1beta1
@@ -18,7 +22,7 @@ spec:
     spaces: [default]
   permissions:
     permissions:
-      - verbs: ["GET", "LIST"]
+      - verbs: [get, list]
         apiGroups: ["*"]
         resources: ["*"]
 
@@ -34,7 +38,7 @@ spec:
     spaces: [default]
   permissions:
     permissions:
-      - verbs: ["GET", "LIST"]
+      - verbs: [get, list]
         apiGroups: ["*"]
         resources: ["*"]
 
@@ -53,14 +57,14 @@ spec:
     environments: [development]
   permissions:
     permissions:
-      - verbs: [GET, LIST, CREATE, UPDATE, DELETE]
-        apiGroups: [apps/v1]
+      - verbs: [get, list, create, update, delete]
+        apiGroups: [apps]
         resources: [deployments, replicasets, statefulsets, daemonsets]
-      - verbs: [GET, LIST, CREATE, UPDATE, DELETE]
-        apiGroups: [v1]
+      - verbs: [get, list, create, update, delete]
+        apiGroups: [""]
         resources: [configmaps, services]
-      - verbs: [GET, LIST, CREATE, UPDATE, DELETE]
-        apiGroups: [policy/v1]
+      - verbs: [get, list, create, update, delete]
+        apiGroups: [policy]
         resources: [poddisruptionbudgets]
 
 ---
@@ -77,12 +81,12 @@ spec:
     environments: [test]
   permissions:
     permissions:
-      - verbs: [GET, LIST, CREATE, UPDATE, DELETE]
-        apiGroups: [apps/v1]
+      - verbs: [get, list, create, update, delete]
+        apiGroups: [apps]
         resources: [deployments, replicasets, statefulsets, daemonsets]
-      - verbs: [GET, LIST, CREATE, UPDATE, DELETE]
-        apiGroups: [v1]
+      - verbs: [get, list, create, update, delete]
+        apiGroups: [""]
         resources: [configmaps, services]
-      - verbs: [GET, LIST, CREATE, UPDATE, DELETE]
-        apiGroups: [policy/v1]
+      - verbs: [get, list, create, update, delete]
+        apiGroups: [policy]
         resources: [poddisruptionbudgets]

@@ -4,7 +4,13 @@
 # resources.
 #
 # Namespace/environment here match k8s/bindings/aks-production.env and
-# the aks-production target's configured Octopus environment, Production.
+# the aks-production target's configured Octopus environment. Scope
+# values are lowercase slugs (production), not display names.
+#
+# verbs are lowercase (get/list/create...) and apiGroups are bare group
+# names (apps, "", policy) — not apiVersion strings like apps/v1 — per
+# the real sample in the Octopus Permissions Controller repo:
+# https://github.com/OctopusDeploy/octopus-permissions-controller/blob/main/config/samples/v1beta1_clusterworkloadserviceaccount.yaml
 #
 # Note: the aks-production target is also associated with a
 # "Meta-Production" environment in your instance — not included below
@@ -22,7 +28,7 @@ spec:
     spaces: [default]
   permissions:
     permissions:
-      - verbs: ["GET", "LIST"]
+      - verbs: [get, list]
         apiGroups: ["*"]
         resources: ["*"]
 
@@ -42,18 +48,18 @@ spec:
     environments: [production]
   permissions:
     permissions:
-      - verbs: [GET, LIST, CREATE, UPDATE, DELETE]
-        apiGroups: [apps/v1]
+      - verbs: [get, list, create, update, delete]
+        apiGroups: [apps]
         resources: [deployments, replicasets, statefulsets, daemonsets]
-      - verbs: [GET, LIST, CREATE, UPDATE, DELETE]
-        apiGroups: [v1]
+      - verbs: [get, list, create, update, delete]
+        apiGroups: [""]
         resources: [configmaps, services]
-      - verbs: [GET, LIST, CREATE, UPDATE, DELETE]
-        apiGroups: [policy/v1]
+      - verbs: [get, list, create, update, delete]
+        apiGroups: [policy]
         resources: [poddisruptionbudgets]
 
 ---
-# Cluster-scoped, deliberately GET/LIST only — Namespace isn't a
+# Cluster-scoped, deliberately get/list only — Namespace isn't a
 # namespaced resource, so no WorkloadServiceAccount (namespace-scoped
 # Role) can ever grant access to it, regardless of what verbs it lists.
 # This is the intentional demo point: the "Create namespace if not
@@ -72,6 +78,6 @@ spec:
     environments: [production]
   permissions:
     permissions:
-      - verbs: ["GET", "LIST"]
+      - verbs: [get, list]
         apiGroups: [""]
-        resources: ["namespaces"]
+        resources: [namespaces]
