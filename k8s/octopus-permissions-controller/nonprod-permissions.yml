@@ -59,6 +59,7 @@ spec:
   scope:
     spaces: [default]
     environments: [development]
+    projects: [kubernetes-krane]
   permissions:
     permissions:
       - verbs: [get, list, create, update, patch, delete]
@@ -83,6 +84,7 @@ spec:
   scope:
     spaces: [default]
     environments: [test]
+    projects: [kubernetes-krane]
   permissions:
     permissions:
       - verbs: [get, list, create, update, patch, delete]

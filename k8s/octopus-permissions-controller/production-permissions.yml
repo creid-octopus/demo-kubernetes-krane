@@ -1,7 +1,5 @@
 # Kubernetes Agent permission scoping for the aks-production cluster
-# only — see nonprod-permissions.yml for aks-nonprod. Moved out of that
-# file, where it was previously (incorrectly) mixed in with nonprod
-# resources.
+# only — see nonprod-permissions.yml for aks-nonprod.
 #
 # Namespace/environment here match k8s/bindings/aks-production.env and
 # the aks-production target's configured Octopus environment. Scope
@@ -16,10 +14,6 @@
 # under the hood) always issues a PATCH, never a PUT. update and patch
 # are distinct RBAC verbs; granting update alone doesn't cover apply.
 #
-# Note: the aks-production target is also associated with a
-# "Meta-Production" environment in your instance — not included below
-# since it's not obviously tied to this app. Add a scope for it here if
-# it should also get access to app-production.
 
 # Broad read access in space `default` for anything in app-production
 apiVersion: agent.octopus.com/v1beta1
@@ -50,6 +44,7 @@ spec:
   scope:
     spaces: [default]
     environments: [production]
+    projects: [kubernetes-krane]
   permissions:
     permissions:
       - verbs: [get, list, create, update, patch, delete]
@@ -101,6 +96,7 @@ spec:
   scope:
     spaces: [default]
     environments: [production]
+    projects: [kubernetes-krane]
   permissions:
     permissions:
       - verbs: [get, list, patch]
