@@ -1,31 +1,27 @@
 # Buildkite -> Octopus, OIDC-authenticated. Two steps, building iteratively:
 #
-#   Layer 1 (octopus-oidc-login) — proves a Buildkite agent can mint its own
-#     OIDC token and trade it for a short-lived Octopus access token, with
-#     zero long-lived secrets (no OCTOPUS_API_KEY anywhere). Left in place
-#     as an ongoing auth canary.
+#   Layer 1 (octopus-oidc-login) — proves the agent can mint its own OIDC
+#     token and trade it for an Octopus access token, no stored API key.
+#     Left in place as an ongoing auth canary.
 #
-#   Layer 2 (octopus-publish) — the real version of publish.yml's stub
-#     steps: build the image, push it to GHCR, push build information,
-#     create a release, and deploy to Development.
+#   Layer 2 (octopus-publish) — builds the image, pushes it to GHCR, pushes
+#     build information, creates a release, and deploys to Development —
+#     the same flow publish.yml runs for GitHub Actions.
 #
-# Prerequisites (see PLAN.md / conversation notes for the full writeup):
-#   - An Octopus service account + team + "Build server" role scoped to the
-#     Kubernetes - Krane project (Projects-22).
-#   - An OIDC identity on that service account:
-#       Issuer:   https://agent.buildkite.com
-#       Subject:  organization:octopus-deploy:pipeline:creid-oidc-buildinfo:ref:*:commit:*:step:*
-#       Audience: <the service account's GUID>
-#   - OCTOPUS_SERVICE_ACCOUNT_ID below set to that same GUID.
-#   - A local Buildkite agent running (see buildkiteplanning/ or the
-#     conversation notes for the `docker run buildkite/agent:3` command).
+# See OIDC.md for the design details shared with publish.yml (the
+# SA-Buildkite service account, OIDC identity, GHCR feed, versioning
+# contract). This file only covers what's specific to running that flow
+# through Buildkite:
+#   - OCTOPUS_SERVICE_ACCOUNT_ID below is SA-Buildkite's GUID.
+#   - A Buildkite agent running (buildkiteplanning/ or conversation notes
+#     for the `docker run buildkite/agent:3` command).
 #   - Buildkite secrets GHCRPushToken and CommitsApiKey (see the
-#     octopus-publish step below for what each is for).
+#     octopus-publish step for what each is for).
 #
-# TODO: tighten the OIDC Subject above — swap the ref/commit/step wildcards
-# for `buildkite-agent oidc request-token --subject-claim pipeline_id` and
-# the pipeline's UUID, which is an exact match instead of a wildcard match.
-# Left wildcarded for now since real steps only just landed.
+# TODO: tighten the OIDC Subject in Octopus — swap the ref/commit/step
+# wildcards for `buildkite-agent oidc request-token --subject-claim
+# pipeline_id` and the pipeline's UUID, an exact match instead of a
+# wildcard. Left wildcarded for now since real steps only just landed.
 
 env:
   OCTOPUS_SERVER_URL: "https://creid.octopus.app"
@@ -33,14 +29,9 @@ env:
   OCTOPUS_PROJECT: "Kubernetes - Krane"
   OCTOPUS_CHANNEL: "Default"
   OCTOPUS_ENVIRONMENT: "Development"
-  # Feed package ID (Feeds-1021, GHCR-creid-octopus) vs. the deployment
-  # process's local package reference name — these are two different
-  # strings in Octopus and the CLI cares which one you use where:
-  #   - build-information is keyed by the real feed package ID.
-  #   - release create's --package wants the deployment process's
-  #     reference name (see the "Run `deploy.sh`..." step's Packages
-  #     block, Name: "demo-kubernetes-krane" -> PackageId:
-  #     "creid-octopus/demo-kubernetes-krane" on Feeds-1021).
+  # Package ID vs. reference name are two different strings in Octopus —
+  # see OIDC.md ("Facts both pipelines depend on") for why the CLI cares
+  # which one is used where.
   OCTOPUS_PACKAGE_ID: "creid-octopus/demo-kubernetes-krane"
   OCTOPUS_PACKAGE_REFERENCE_NAME: "demo-kubernetes-krane"
   IMAGE_REPO: "ghcr.io/creid-octopus/demo-kubernetes-krane"
@@ -79,30 +70,17 @@ steps:
       queue: "default-queue"
 
   # Layer 2 — build, push, register build information, create a release,
-  # and deploy to Development. This is the real version of publish.yml's
-  # stub steps (push package / push build info / create release / deploy),
-  # now actually wired to your Octopus project.
-  #
-  # The Kubernetes - Krane project's "Default" channel has a version rule
-  # requiring the package's version to carry a `sha-<7 hex chars>`
-  # pre-release tag (checked directly against the project's channel
-  # config) — that's why VERSION below matches build-image.yml's second
-  # tag format (major.minor.build-sha-shortsha) rather than a plain counter.
-  # Skipping this would mean the release doesn't land in Default and the
-  # command may reject with no matching channel.
+  # and deploy to Development. VERSION carries a `sha-<7 hex>` suffix
+  # because the project's Default channel requires it — see OIDC.md.
   #
   # Two Buildkite secrets this step needs that Layer 1 didn't:
-  #   - GHCRPushToken: a GitHub PAT (classic or fine-grained) scoped to
-  #     write:packages on creid-octopus/demo-kubernetes-krane, used only
-  #     for `docker push` to GHCR. This is the one real, static credential
-  #     in the whole pipeline — GHCR has no third-party OIDC federation
-  #     today (Docker's new OIDC support is Docker Hub + GitHub Actions
-  #     only, not GHCR, not Buildkite, as of this writing).
-  #   - CommitsApiKey: a Buildkite API access token (read_builds scope),
-  #     same one your teammate's bk-pipeline-sample.yml already uses, to
-  #     look up the last successful build's commit for the build
-  #     information commit range. If this secret isn't set, the script
-  #     falls back to just the current commit rather than failing.
+  #   - GHCRPushToken: a GitHub PAT scoped to write:packages, used only for
+  #     `docker push` to GHCR — the one real, static credential anywhere
+  #     in this pipeline (GHCR has no third-party OIDC federation today).
+  #   - CommitsApiKey: a Buildkite API token (read_builds scope), same one
+  #     your teammate's bk-pipeline-sample.yml already uses, to look up the
+  #     last successful build's commit for the build information range.
+  #     Soft-fails to just the current commit if this secret isn't set.
   - label: ":docker: Build, publish, and deploy via Octopus"
     key: "octopus-publish"
     secrets:

@@ -61,9 +61,11 @@ scripts/regions.conf            region → context → bindings-file map
 hack/local-cluster.sh           kind cluster + local registry + namespace setup
 hack/kind-config.yaml           kind cluster config used by local-cluster.sh
 tooling/Dockerfile               Kubernetes Agent script-pod tooling image (krane, kubectl, az)
-.github/workflows/              ci.yml (build + krane smoke-deploy), build-image.yml
-                                (push app image to GHCR), build-toolbox.yml (push tooling
-                                image to GHCR, manual dispatch), publish.yml (Octopus stub)
+.github/workflows/              ci.yml (build + krane smoke-deploy), build-toolbox.yml
+                                (push tooling image to GHCR, manual dispatch), publish.yml
+                                (build, publish, and deploy via Octopus — OIDC-authenticated)
+.buildkite/pipeline.yml          Buildkite equivalent of publish.yml, also OIDC-authenticated
+OIDC.md                          shared OIDC/Octopus design notes for both CI pipelines
 command-reference.md            Helm commands for cert-manager + agent tooling-image overrides
 Gemfile / Gemfile.lock          pins krane (installed via `bundle install`)
 ```
