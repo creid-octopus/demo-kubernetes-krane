@@ -98,6 +98,11 @@ steps:
         export PATH="$$PATH:/usr/local/bin"
       fi
       octopus version
+
+      if ! command -v docker >/dev/null 2>&1; then
+        echo "docker not found on this agent — install it before this step can build/push images."
+        exit 1
+      fi
       docker version
 
       echo "--- :key: OIDC login"
