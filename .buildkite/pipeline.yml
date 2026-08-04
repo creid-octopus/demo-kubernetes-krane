@@ -109,6 +109,7 @@ steps:
       OCTOPUS_ID_TOKEN=$$(buildkite-agent oidc request-token --audience "$$OCTOPUS_SERVICE_ACCOUNT_ID")
       octopus login \
         --server "$$OCTOPUS_SERVER_URL" \
+        --space "Default"
         --service-account-id "$$OCTOPUS_SERVICE_ACCOUNT_ID" \
         --id-token "$$OCTOPUS_ID_TOKEN"
 
