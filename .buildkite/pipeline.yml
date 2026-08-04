@@ -19,7 +19,7 @@
 #   - OCTOPUS_SERVICE_ACCOUNT_ID below set to that same GUID.
 #   - A local Buildkite agent running (see buildkiteplanning/ or the
 #     conversation notes for the `docker run buildkite/agent:3` command).
-#   - Buildkite secrets GhcrPushToken and CommitsApiKey (see the
+#   - Buildkite secrets GHCRPushToken and CommitsApiKey (see the
 #     octopus-publish step below for what each is for).
 #
 # TODO: tighten the OIDC Subject above — swap the ref/commit/step wildcards
@@ -92,7 +92,7 @@ steps:
   # command may reject with no matching channel.
   #
   # Two Buildkite secrets this step needs that Layer 1 didn't:
-  #   - GhcrPushToken: a GitHub PAT (classic or fine-grained) scoped to
+  #   - GHCRPushToken: a GitHub PAT (classic or fine-grained) scoped to
   #     write:packages on creid-octopus/demo-kubernetes-krane, used only
   #     for `docker push` to GHCR. This is the one real, static credential
   #     in the whole pipeline — GHCR has no third-party OIDC federation
@@ -106,7 +106,7 @@ steps:
   - label: ":docker: Build, publish, and deploy via Octopus"
     key: "octopus-publish"
     secrets:
-      - GhcrPushToken
+      - GHCRPushToken
       - CommitsApiKey
     command: |
       set -euo pipefail
@@ -146,7 +146,7 @@ steps:
         app
 
       echo "--- :docker: Push image to GHCR"
-      GHCR_PUSH_TOKEN="$$(buildkite-agent secret get GhcrPushToken)"
+      GHCR_PUSH_TOKEN="$$(buildkite-agent secret get GHCRPushToken)"
       echo "$$GHCR_PUSH_TOKEN" | docker login ghcr.io -u "creid-octopus" --password-stdin
       docker push "$$IMAGE_REPO:$$VERSION"
 
