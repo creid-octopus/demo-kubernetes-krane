@@ -28,6 +28,7 @@ env:
   OCTOPUS_SERVICE_ACCOUNT_ID: "379be2d0-dc30-4e55-9234-60f514c45fca"
   OCTOPUS_PROJECT: "Kubernetes - Krane"
   OCTOPUS_CHANNEL: "Default"
+  OCTOPUS_SPACE: "Default"
   OCTOPUS_ENVIRONMENT: "Development"
   # Package ID vs. reference name are two different strings in Octopus —
   # see OIDC.md ("Facts both pipelines depend on") for why the CLI cares
@@ -109,7 +110,6 @@ steps:
       OCTOPUS_ID_TOKEN=$$(buildkite-agent oidc request-token --audience "$$OCTOPUS_SERVICE_ACCOUNT_ID")
       octopus login \
         --server "$$OCTOPUS_SERVER_URL" \
-        --space "Default" \
         --service-account-id "$$OCTOPUS_SERVICE_ACCOUNT_ID" \
         --id-token "$$OCTOPUS_ID_TOKEN"
 
@@ -182,6 +182,7 @@ steps:
         --package-id "$$OCTOPUS_PACKAGE_ID" \
         --version "$$VERSION" \
         --file BuildInformation.json
+        --space "$$OCTOPUS_SPACE"
 
       echo "--- :rocket: Create release"
       octopus release create \
@@ -189,6 +190,7 @@ steps:
         --package "$${OCTOPUS_PACKAGE_REFERENCE_NAME}:$${VERSION}" \
         --version "$$VERSION" \
         --channel "$$OCTOPUS_CHANNEL" \
+        --space "$$OCTOPUS_SPACE" \
         --no-prompt
 
       echo "--- :arrow_forward: Deploy to $$OCTOPUS_ENVIRONMENT"
@@ -196,6 +198,7 @@ steps:
         --project "$$OCTOPUS_PROJECT" \
         --version "$$VERSION" \
         --environment "$$OCTOPUS_ENVIRONMENT" \
+        --space "$$OCTOPUS_SPACE" \
         --output-format basic \
         --no-prompt \
         | octopus task wait
