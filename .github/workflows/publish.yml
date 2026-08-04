@@ -30,6 +30,7 @@ env:
   OCTOPUS_SERVER_URL: "https://creid.octopus.app"
   OCTOPUS_SERVICE_ACCOUNT_ID: "d7b6439c-edd8-4f5c-b035-ad3a647807b4"
   OCTOPUS_PROJECT: "Kubernetes - Krane"
+  OCTOPUS_SPACE: "Default"
   OCTOPUS_CHANNEL: "Default"
   OCTOPUS_ENVIRONMENT: "Development"
 
