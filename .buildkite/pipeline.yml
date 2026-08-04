@@ -1,0 +1,58 @@
+# Layer 1 — OIDC end-to-end smoke test.
+#
+# Goal: prove that a Buildkite agent can mint its own OIDC token and trade
+# it for a short-lived Octopus access token, with zero long-lived secrets
+# (no OCTOPUS_API_KEY anywhere). Nothing here builds the app, pushes a
+# package, or creates a release yet — that's Layer 2+, built on top of this
+# once auth is proven.
+#
+# Prerequisites (see PLAN.md / conversation notes for the full writeup):
+#   - An Octopus service account + team + "Build server" role scoped to the
+#     Kubernetes - Krane project (Projects-22).
+#   - An OIDC identity on that service account:
+#       Issuer:   https://agent.buildkite.com
+#       Subject:  organization:octopus-deploy:pipeline:creid-oidc-buildinfo:ref:*:commit:*:step:*
+#       Audience: <the service account's GUID>
+#   - OCTOPUS_SERVICE_ACCOUNT_ID below set to that same GUID.
+#   - A local Buildkite agent running (see buildkiteplanning/ or the
+#     conversation notes for the `docker run buildkite/agent:3` command).
+#
+# Once real steps exist here, tighten the OIDC Subject above — swap the
+# ref/commit/step wildcards for `buildkite-agent oidc request-token
+# --subject-claim pipeline_id` and the pipeline's UUID, which is an exact
+# match instead of a wildcard match.
+
+env:
+  OCTOPUS_SERVER_URL: "https://creid.octopus.app"
+  OCTOPUS_SERVICE_ACCOUNT_ID: "379be2d0-dc30-4e55-9234-60f514c45fca"
+
+steps:
+  - label: ":octopus: OIDC login smoke test"
+    key: "octopus-oidc-login"
+    command: |
+      set -euo pipefail
+
+      echo "--- :mag: Checking for an existing Octopus CLI"
+      if command -v octopus >/dev/null 2>&1; then
+        echo "Found existing octopus CLI at $$(command -v octopus), skipping install"
+      else
+        echo "octopus CLI not found, installing"
+        curl -sL https://github.com/OctopusDeploy/cli/raw/main/scripts/install.sh | bash
+        export PATH="$$PATH:/usr/local/bin"
+      fi
+      octopus version
+
+      echo "--- :key: Requesting a Buildkite OIDC token"
+      OCTOPUS_ID_TOKEN=$$(buildkite-agent oidc request-token --audience "$$OCTOPUS_SERVICE_ACCOUNT_ID")
+
+      echo "--- :octopus: Exchanging it for an Octopus access token"
+      octopus login \
+        --server "$$OCTOPUS_SERVER_URL" \
+        --service-account-id "$$OCTOPUS_SERVICE_ACCOUNT_ID" \
+        --id-token "$$OCTOPUS_ID_TOKEN"
+
+      echo "--- :white_check_mark: Verifying the session (no API key was used anywhere above)"
+      octopus space list
+      octopus project list --space "Default"
+    agents:
+      queue: "default-queue"
