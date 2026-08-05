@@ -186,17 +186,20 @@ steps:
         --space "$$OCTOPUS_SPACE"
 
       echo "--- :rocket: Create release"
-      octopus release create \
+      OCTOPUS_RELEASE=$(octopus release create \
         --project "$$OCTOPUS_PROJECT" \
         --package "*:$${VERSION}" \
         --version "$$VERSION" \
         --channel "$$OCTOPUS_CHANNEL" \
         --space "$$OCTOPUS_SPACE" \
-        --custom-field "BuildNumber:$$BUILDKITE_BUILD_NUMBER" \
+        --custom-field "BuildNumber:[#$$BUILDKITE_BUILD_NUMBER]($$BUILDKITE_BUILD_URL)" \
         --custom-field "BuildUrl:$$BUILDKITE_BUILD_URL" \
-        --custom-field "CommitSha:$$BUILDKITE_COMMIT" \
+        --custom-field "CommitSha:[$$BUILDKITE_COMMIT]($$REPO_WEB_URL/commit/$$BUILDKITE_COMMIT)" \
         --custom-field "Branch:$$BUILDKITE_BRANCH" \
-        --no-prompt
+        --output-format json \
+        --no-prompt)
+
+      echo "Release created: $$OCTOPUS_RELEASE"
 
       echo "--- :arrow_forward: Deploy to $$OCTOPUS_ENVIRONMENT"
       octopus release deploy \
