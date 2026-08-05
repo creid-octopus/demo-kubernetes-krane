@@ -192,6 +192,10 @@ steps:
         --version "$$VERSION" \
         --channel "$$OCTOPUS_CHANNEL" \
         --space "$$OCTOPUS_SPACE" \
+        --custom-field "BuildNumber:$$BUILDKITE_BUILD_NUMBER" \
+        --custom-field "BuildUrl:$$BUILDKITE_BUILD_URL" \
+        --custom-field "CommitSha:$$BUILDKITE_COMMIT" \
+        --custom-field "Branch:$$BUILDKITE_BRANCH" \
         --no-prompt
 
       echo "--- :arrow_forward: Deploy to $$OCTOPUS_ENVIRONMENT"
