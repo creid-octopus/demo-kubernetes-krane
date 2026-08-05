@@ -1,23 +1,13 @@
-# Octopus integration — STUB. Stands in for "Shipit tracks CI status, a
-# dev clicks Deploy, Shipit shells out to the deploy script" (Deployment
-# Flow.md, steps 3-5), rebuilt on Octopus instead of Shipit.
+# Octopus integration — real, OIDC-authenticated.
 #
-# Deliberately not wired to a real Octopus project yet. The local
-# krane/kind loop (scripts/deploy.sh, scripts/fan-out.sh) is the thing to
-# prove out first; wiring a real Octopus project before that's solid means
-# debugging two unknowns at once. Every step below mirrors the structure
-# of composite-development-loop/.github/workflows/publish.yml — swap
-# `run: echo` for the real `uses:` action once you're ready, the shape
-# won't change.
+# Builds and pushes the image, pushes build information, creates a release,
+# and deploys to Development — no API key anywhere in this workflow.
 #
-# When this goes live you'll need, at minimum:
-#   Secrets:   OCTOPUS_SERVER_URL, OCTOPUS_API_KEY, OCTOPUS_SPACE
-#   Variables: OCTOPUS_PROJECT
-# and a decision on regions-as-environments vs. regions-as-tenants
-# (see ARCHITECTURE.md) before the "Create release" / "Deploy" steps
-# below can target real regions.
+# See OIDC.md for the shared design details: the SA-GHA service account and
+# OIDC identity, why the image is built here rather than in a separate
+# workflow, and why VERSION carries a `sha-<7 hex>` suffix.
 
-name: Publish (stub)
+name: Publish
 
 on:
   push:
@@ -27,58 +17,108 @@ on:
       - "app/**"
   workflow_dispatch:
 
+permissions:
+  id-token: write   # required for OctopusDeploy/login to fetch a GitHub OIDC token
+  contents: read    # required for actions/checkout, since permissions: resets defaults
+  packages: write   # required to push the image to GHCR
+
 env:
-  OCTOPUS_PACKAGE: demo-kubernetes-krane-app
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
   VERSION_MAJOR: "0"
   VERSION_MINOR: "1"
+  OCTOPUS_SERVER_URL: "https://creid.octopus.app"
+  OCTOPUS_SERVICE_ACCOUNT_ID: "d7b6439c-edd8-4f5c-b035-ad3a647807b4"
+  OCTOPUS_PROJECT: "Kubernetes - Krane"
+  OCTOPUS_SPACE: "Default"
+  OCTOPUS_CHANNEL: "Default"
+  OCTOPUS_ENVIRONMENT: "Development"
 
 jobs:
   publish:
-    name: Build & publish (dry run)
+    name: Build, publish, and deploy via Octopus
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v7
+        with:
+          # Full history so push-build-information-action has commits to
+          # walk — the default shallow clone (depth=1) leaves it nothing.
+          fetch-depth: 0
 
       - name: Compute build metadata
         id: meta
         run: |
-          VERSION="${{ env.VERSION_MAJOR }}.${{ env.VERSION_MINOR }}.${{ github.run_number }}"
+          SHORT_SHA="${GITHUB_SHA::7}"
+          VERSION="${{ env.VERSION_MAJOR }}.${{ env.VERSION_MINOR }}.${{ github.run_number }}-sha-${SHORT_SHA}"
+          IMAGE_REF="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "image_ref=$IMAGE_REF" >> "$GITHUB_OUTPUT"
 
-      # ── Step 1: Push package to Octopus (stub) ──────────────────────────
-      # Real version: OctopusDeploy/push-package-action@v4, packaging
-      # app/ the same way build-image.yml tags the image, keyed to the
-      # same version.
-      - name: Push package to Octopus [stub]
-        run: |
-          echo "Would push package: ${{ env.OCTOPUS_PACKAGE }} @ ${{ steps.meta.outputs.version }}"
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
 
-      # ── Step 2: Push build information (stub) ────────────────────────────
-      # Real version: OctopusDeploy/push-build-information-action@v4
-      - name: Push build information [stub]
-        run: echo "Would push build info for commit ${{ github.sha }}"
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      # ── Step 3: Create Octopus release (stub) ────────────────────────────
-      # Real version: OctopusDeploy/create-release-action@v4
-      - name: Create Octopus release [stub]
-        run: echo "Would create release ${{ steps.meta.outputs.version }} in project ${{ vars.OCTOPUS_PROJECT }}"
+      - name: Build and push image
+        uses: docker/build-push-action@v7
+        with:
+          context: app
+          push: true
+          target: release
+          tags: ${{ steps.meta.outputs.image_ref }}:${{ steps.meta.outputs.version }}
+          build-args: |
+            APP_VERSION=${{ steps.meta.outputs.version }}
+            APP_BRANCH=${{ github.ref_name }}
+            APP_BUILD=${{ github.run_number }}
+            APP_COMMIT_SHA=${{ github.sha }}
 
-      # ── Step 4: Deploy (stub) ─────────────────────────────────────────────
-      # Real version: OctopusDeploy/deploy-release-action@v4. This is the
-      # step that eventually replaces "a dev clicks Deploy in Shipit" —
-      # once real, Octopus becomes the click-to-deploy surface, not GitHub
-      # Actions. Until then, that click-to-deploy step is `make deploy`
-      # against your local kind cluster.
-      - name: Deploy to Development [stub]
-        run: echo "Would deploy ${{ steps.meta.outputs.version }} to Development"
+      - name: Log into Octopus
+        uses: OctopusDeploy/login@v1
+        with:
+          server: ${{ env.OCTOPUS_SERVER_URL }}
+          service_account_id: ${{ env.OCTOPUS_SERVICE_ACCOUNT_ID }}
+
+      # No push-package step — the image is referenced from the GHCR
+      # external feed directly (see OIDC.md).
+
+      - name: Push build information
+        uses: OctopusDeploy/push-build-information-action@v4
+        with:
+          space: Default
+          packages: |
+            ${{ env.IMAGE_NAME }}
+          version: ${{ steps.meta.outputs.version }}
+
+      - name: Create Octopus release
+        uses: OctopusDeploy/create-release-action@v3
+        with:
+          space: Default
+          project: ${{ env.OCTOPUS_PROJECT }}
+          channel: ${{ env.OCTOPUS_CHANNEL }}
+          release_number: ${{ steps.meta.outputs.version }}
+          package_version: ${{ steps.meta.outputs.version }}
+
+      - name: Deploy to Development
+        uses: OctopusDeploy/deploy-release-action@v3
+        with:
+          space: Default
+          project: ${{ env.OCTOPUS_PROJECT }}
+          release_number: ${{ steps.meta.outputs.version }}
+          environments: |
+            ${{ env.OCTOPUS_ENVIRONMENT }}
 
       - name: Summary
         run: |
           {
-            echo "### Publish (stub) — \`${{ steps.meta.outputs.version }}\`"
+            echo "### Publish — \`${{ steps.meta.outputs.version }}\`"
             echo ""
-            echo "Nothing was actually pushed to Octopus — this workflow is a"
-            echo "placeholder until a real Octopus project is wired in. See"
-            echo "ARCHITECTURE.md."
+            echo "Released and deployed \`${{ steps.meta.outputs.version }}\` to"
+            echo "${{ env.OCTOPUS_ENVIRONMENT }} via Octopus, authenticated with"
+            echo "OIDC — no API key anywhere in this workflow."
           } >> "$GITHUB_STEP_SUMMARY"

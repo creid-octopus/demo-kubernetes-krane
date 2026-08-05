@@ -41,24 +41,22 @@ multi-region fan-out — this repo doesn't need it with only two clusters.
 
 ## CI/CD
 
-Three workflows:
-
 - **`ci.yml`** — builds the image (dry run) and additionally spins up an
   ephemeral kind cluster in the runner, then runs `krane render | krane
   deploy` against a scratch namespace as a smoke test. This catches
   "does this app's manifests actually converge" at CI time rather than
   first finding out at deploy time.
-- **`build-image.yml`** — builds and pushes the app image to GHCR on
-  merge to `main`, tagged by version + short SHA.
 - **`build-toolbox.yml`** — builds and pushes the Kubernetes Agent's
   script-pod tooling image (`tooling/Dockerfile`). Manual dispatch only —
   this image changes rarely, unlike the app image.
+- **`publish.yml`** — real: builds and pushes the app image to GHCR,
+  pushes build information, creates a release, and deploys to Development,
+  authenticated to Octopus via OIDC (no API key).
 
-`publish.yml` is still a dry-run stub: every step is structured like its
-real `OctopusDeploy/*-action@v4` equivalent (push package, push build
-info, create release, deploy) but just echoes what it would do. Wiring it
-to a real Octopus project is a fork-specific exercise — the shape is
-already there.
+A Buildkite pipeline (`.buildkite/pipeline.yml`) runs the equivalent flow
+in parallel, also OIDC-authenticated, while both CI systems are being
+evaluated side by side. See **[OIDC.md](./OIDC.md)** for the OIDC/Octopus
+design details shared by both.
 
 ## Kubernetes Agent and RBAC
 
@@ -75,7 +73,6 @@ this up on a new cluster.
 
 ## Ideas for a fork
 
-- Make `publish.yml` real against an actual Octopus project.
 - Move `k8s/bindings/*.env` into Octopus project/tenant variables once
   Octopus is the source of truth for per-env config.
 - Model true multi-region fan-out as a tenanted Production deployment

@@ -1,0 +1,214 @@
+# Buildkite -> Octopus, OIDC-authenticated. Two steps, building iteratively:
+#
+#   Layer 1 (octopus-oidc-login) — proves the agent can mint its own OIDC
+#     token and trade it for an Octopus access token, no stored API key.
+#     Left in place as an ongoing auth canary.
+#
+#   Layer 2 (octopus-publish) — builds the image, pushes it to GHCR, pushes
+#     build information, creates a release, and deploys to Development —
+#     the same flow publish.yml runs for GitHub Actions.
+#
+# See OIDC.md for the design details shared with publish.yml (the
+# SA-Buildkite service account, OIDC identity, GHCR feed, versioning
+# contract). This file only covers what's specific to running that flow
+# through Buildkite:
+#   - OCTOPUS_SERVICE_ACCOUNT_ID below is SA-Buildkite's GUID.
+#   - A Buildkite agent running (buildkiteplanning/ or conversation notes
+#     for the `docker run buildkite/agent:3` command).
+#   - Buildkite secrets GHCRPushToken and CommitsApiKey (see the
+#     octopus-publish step for what each is for).
+#
+# TODO: tighten the OIDC Subject in Octopus — swap the ref/commit/step
+# wildcards for `buildkite-agent oidc request-token --subject-claim
+# pipeline_id` and the pipeline's UUID, an exact match instead of a
+# wildcard. Left wildcarded for now since real steps only just landed.
+
+env:
+  OCTOPUS_SERVER_URL: "https://creid.octopus.app"
+  OCTOPUS_SERVICE_ACCOUNT_ID: "379be2d0-dc30-4e55-9234-60f514c45fca"
+  OCTOPUS_PROJECT: "Kubernetes - Krane"
+  OCTOPUS_CHANNEL: "Default"
+  OCTOPUS_SPACE: "Default"
+  OCTOPUS_ENVIRONMENT: "Development"
+  # build-information is keyed by the real feed package ID; release create
+  # instead uses --package '*:<version>' (confirmed via the CLI's own
+  # interactive mode) — "this version for every package in the release,"
+  # which for this project's single-package deployment process lands the
+  # same as naming it specifically. See OIDC.md.
+  OCTOPUS_PACKAGE_ID: "creid-octopus/demo-kubernetes-krane"
+  IMAGE_REPO: "ghcr.io/creid-octopus/demo-kubernetes-krane"
+  VERSION_MAJOR: "0"
+  VERSION_MINOR: "1"
+
+steps:
+  - label: ":octopus: OIDC login smoke test"
+    key: "octopus-oidc-login"
+    command: |
+      set -euo pipefail
+
+      echo "--- :mag: Checking for an existing Octopus CLI"
+      if command -v octopus >/dev/null 2>&1; then
+        echo "Found existing octopus CLI at $$(command -v octopus), skipping install"
+      else
+        echo "octopus CLI not found, installing"
+        curl -sL https://github.com/OctopusDeploy/cli/raw/main/scripts/install.sh | bash
+        export PATH="$$PATH:/usr/local/bin"
+      fi
+      octopus version
+
+      echo "--- :key: Requesting a Buildkite OIDC token"
+      OCTOPUS_ID_TOKEN=$$(buildkite-agent oidc request-token --audience "$$OCTOPUS_SERVICE_ACCOUNT_ID")
+
+      echo "--- :octopus: Exchanging it for an Octopus access token"
+      octopus login \
+        --server "$$OCTOPUS_SERVER_URL" \
+        --service-account-id "$$OCTOPUS_SERVICE_ACCOUNT_ID" \
+        --id-token "$$OCTOPUS_ID_TOKEN"
+
+      echo "--- :white_check_mark: Verifying the session (no API key was used anywhere above)"
+      octopus space list
+      octopus project list --space "Default"
+    agents:
+      queue: "default-queue"
+
+  # Layer 2 — build, push, register build information, create a release,
+  # and deploy to Development. VERSION carries a `sha-<7 hex>` suffix
+  # because the project's Default channel requires it — see OIDC.md.
+  #
+  # Two Buildkite secrets this step needs that Layer 1 didn't:
+  #   - GHCRPushToken: a GitHub PAT scoped to write:packages, used only for
+  #     `docker push` to GHCR — the one real, static credential anywhere
+  #     in this pipeline (GHCR has no third-party OIDC federation today).
+  #   - CommitsApiKey: a Buildkite API token (read_builds scope), same one
+  #     your teammate's bk-pipeline-sample.yml already uses, to look up the
+  #     last successful build's commit for the build information range.
+  #     Soft-fails to just the current commit if this secret isn't set.
+  - label: ":docker: Build, publish, and deploy via Octopus"
+    key: "octopus-publish"
+    secrets:
+      - GHCRPushToken
+      - CommitsApiKey
+    command: |
+      set -euo pipefail
+
+      echo "--- :mag: Scaffold: checking required tooling"
+      if command -v octopus >/dev/null 2>&1; then
+        echo "Found existing octopus CLI at $$(command -v octopus), skipping install"
+      else
+        echo "octopus CLI not found, installing"
+        curl -sL https://github.com/OctopusDeploy/cli/raw/main/scripts/install.sh | bash
+        export PATH="$$PATH:/usr/local/bin"
+      fi
+      octopus version
+
+      if ! command -v docker >/dev/null 2>&1; then
+        echo "docker not found on this agent — install it before this step can build/push images."
+        exit 1
+      fi
+      docker version
+
+      echo "--- :key: OIDC login"
+      OCTOPUS_ID_TOKEN=$$(buildkite-agent oidc request-token --audience "$$OCTOPUS_SERVICE_ACCOUNT_ID")
+      octopus login \
+        --server "$$OCTOPUS_SERVER_URL" \
+        --service-account-id "$$OCTOPUS_SERVICE_ACCOUNT_ID" \
+        --id-token "$$OCTOPUS_ID_TOKEN"
+
+      echo "--- :git: Compute version"
+      SHORT_SHA="$${BUILDKITE_COMMIT:0:7}"
+      VERSION="$${VERSION_MAJOR}.$${VERSION_MINOR}.$${BUILDKITE_BUILD_NUMBER}-sha-$${SHORT_SHA}"
+      buildkite-agent meta-data set "version" "$$VERSION"
+      echo "Version: $$VERSION"
+
+      echo "--- :docker: Build image"
+      docker build \
+        --target release \
+        --build-arg APP_VERSION="$$VERSION" \
+        --build-arg APP_BRANCH="$$BUILDKITE_BRANCH" \
+        --build-arg APP_BUILD="$$BUILDKITE_BUILD_NUMBER" \
+        --build-arg APP_COMMIT_SHA="$$BUILDKITE_COMMIT" \
+        -t "$$IMAGE_REPO:$$VERSION" \
+        app
+
+      echo "--- :docker: Push image to GHCR"
+      GHCR_PUSH_TOKEN="$$(buildkite-agent secret get GHCRPushToken)"
+      echo "$$GHCR_PUSH_TOKEN" | docker login ghcr.io -u "creid-octopus" --password-stdin
+      docker push "$$IMAGE_REPO:$$VERSION"
+
+      echo "--- :information_source: Assemble and push build information"
+      COMMITS_API_KEY="$$(buildkite-agent secret get CommitsApiKey || true)"
+      LAST_SUCCESSFUL_COMMIT=""
+      if [ -n "$$COMMITS_API_KEY" ]; then
+        LAST_SUCCESSFUL_COMMIT=$$(curl -s \
+          -H "Authorization: Bearer $$COMMITS_API_KEY" \
+          "https://api.buildkite.com/v2/organizations/$${BUILDKITE_ORGANIZATION_SLUG}/pipelines/$${BUILDKITE_PIPELINE_SLUG}/builds?branch=$${BUILDKITE_BRANCH}&state=passed&per_page=1" \
+          | jq -r '.[0].commit // empty')
+      fi
+
+      if [ -z "$$LAST_SUCCESSFUL_COMMIT" ]; then
+        echo "No previous successful build found (or CommitsApiKey not set) — using just this commit"
+        COMMIT_RANGE="$$BUILDKITE_COMMIT"
+      else
+        echo "Last successful build commit: $$LAST_SUCCESSFUL_COMMIT"
+        COMMIT_RANGE="$${LAST_SUCCESSFUL_COMMIT}..$${BUILDKITE_COMMIT}"
+      fi
+
+      REPO_WEB_URL="https://github.com/creid-octopus/demo-kubernetes-krane"
+
+      COMMITS_JSON=$$(git log "$$COMMIT_RANGE" --pretty=format:'%H%x1f%s' \
+        | while IFS=$$'\x1f' read -r hash subject; do
+            jq -n --arg id "$$hash" --arg comment "$$subject" --arg url "$$REPO_WEB_URL/commit/$$hash" \
+              '{Id: $$id, LinkUrl: $$url, Comment: $$comment}'
+          done | jq -s '.')
+
+      jq -n \
+        --arg branch "$$BUILDKITE_BRANCH" \
+        --arg buildUrl "$$BUILDKITE_BUILD_URL" \
+        --arg buildNumber "$$BUILDKITE_BUILD_NUMBER" \
+        --arg vcsCommit "$$BUILDKITE_COMMIT" \
+        --arg vcsRoot "$$REPO_WEB_URL" \
+        --argjson commits "$$COMMITS_JSON" \
+        '{
+          Branch: $$branch,
+          BuildUrl: $$buildUrl,
+          BuildNumber: $$buildNumber,
+          BuildEnvironment: "Buildkite",
+          VcsType: "Git",
+          VcsRoot: $$vcsRoot,
+          VcsCommitNumber: $$vcsCommit,
+          Commits: $$commits
+        }' > BuildInformation.json
+
+      octopus build-information upload \
+        --package-id "$$OCTOPUS_PACKAGE_ID" \
+        --version "$$VERSION" \
+        --file BuildInformation.json \
+        --space "$$OCTOPUS_SPACE"
+
+      echo "--- :rocket: Create release"
+      OCTOPUS_RELEASE=$(octopus release create \
+        --project "$$OCTOPUS_PROJECT" \
+        --package "*:$${VERSION}" \
+        --version "$$VERSION" \
+        --channel "$$OCTOPUS_CHANNEL" \
+        --space "$$OCTOPUS_SPACE" \
+        --custom-field "BuildNumber:$$BUILDKITE_BUILD_NUMBER" \
+        --custom-field "BuildUrl:$$BUILDKITE_BUILD_URL" \
+        --custom-field "CommitSha:$$BUILDKITE_COMMIT" \
+        --custom-field "Branch:$$BUILDKITE_BRANCH" \
+        --output-format json \
+        --no-prompt)
+
+      echo "Release created: $$OCTOPUS_RELEASE"
+
+      echo "--- :arrow_forward: Deploy to $$OCTOPUS_ENVIRONMENT"
+      octopus release deploy \
+        --project "$$OCTOPUS_PROJECT" \
+        --version "$$VERSION" \
+        --environment "$$OCTOPUS_ENVIRONMENT" \
+        --space "$$OCTOPUS_SPACE" \
+        --output-format basic \
+        --no-prompt \
+        | octopus task wait
+    agents:
+      queue: "default-queue"
