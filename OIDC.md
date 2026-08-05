@@ -47,12 +47,20 @@ Buildkite and GitHub Actions are different classes of issuer in Octopus:
   `Feeds-1021` / `GHCR-creid-octopus`, pointing at `ghcr.io` as user
   `creid-octopus`. Neither pipeline runs a package-push step; they build and
   push the image straight to GHCR, then reference it by tag.
-- **Package ID vs. package reference name** — two different strings for the
-  same thing. Build information is keyed by the real feed package ID,
-  `creid-octopus/demo-kubernetes-krane`. Release creation instead wants the
-  deployment process's local package slot name, `demo-kubernetes-krane` (see
-  the "Run `deploy.sh`..." step's `Packages` block in the deployment
-  process).
+- **Package ID vs. `--package` for release create** — build information is
+  keyed by the real feed package ID, `creid-octopus/demo-kubernetes-krane`.
+  Release creation's `--package` flag is different: the confirmed working
+  form, from the Octopus CLI's own interactive mode (which prints the
+  equivalent non-interactive command), is a literal wildcard —
+  `--package '*:<version>'` — meaning "use this version for every package
+  in the release," not "use this version for this specific package." For
+  this project's single-package deployment process that lands the same as
+  naming the package reference explicitly (`demo-kubernetes-krane:<version>`,
+  untested but likely equally valid). Worth naming it explicitly instead of
+  `*` if this project ever grows a second package, so a new release doesn't
+  silently apply the same version to both. `OctopusDeploy/create-release-action`'s
+  `package_version` input is the GitHub Actions equivalent of the wildcard
+  form, which is why `publish.yml` never had to make this choice.
 - **The `Default` channel has a version rule**: the package version must
   carry a `sha-<7 hex chars>` pre-release tag to match it. Both pipelines
   compute version as `{major}.{minor}.{build number}-sha-{short commit sha}`

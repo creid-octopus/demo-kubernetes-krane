@@ -30,11 +30,12 @@ env:
   OCTOPUS_CHANNEL: "Default"
   OCTOPUS_SPACE: "Default"
   OCTOPUS_ENVIRONMENT: "Development"
-  # Package ID vs. reference name are two different strings in Octopus —
-  # see OIDC.md ("Facts both pipelines depend on") for why the CLI cares
-  # which one is used where.
+  # build-information is keyed by the real feed package ID; release create
+  # instead uses --package '*:<version>' (confirmed via the CLI's own
+  # interactive mode) — "this version for every package in the release,"
+  # which for this project's single-package deployment process lands the
+  # same as naming it specifically. See OIDC.md.
   OCTOPUS_PACKAGE_ID: "creid-octopus/demo-kubernetes-krane"
-  OCTOPUS_PACKAGE_REFERENCE_NAME: "demo-kubernetes-krane"
   IMAGE_REPO: "ghcr.io/creid-octopus/demo-kubernetes-krane"
   VERSION_MAJOR: "0"
   VERSION_MINOR: "1"
@@ -181,13 +182,13 @@ steps:
       octopus build-information upload \
         --package-id "$$OCTOPUS_PACKAGE_ID" \
         --version "$$VERSION" \
-        --file BuildInformation.json
+        --file BuildInformation.json \
         --space "$$OCTOPUS_SPACE"
 
       echo "--- :rocket: Create release"
       octopus release create \
         --project "$$OCTOPUS_PROJECT" \
-        --package "$${OCTOPUS_PACKAGE_REFERENCE_NAME}:$${VERSION}" \
+        --package "*:$${VERSION}" \
         --version "$$VERSION" \
         --channel "$$OCTOPUS_CHANNEL" \
         --space "$$OCTOPUS_SPACE" \
