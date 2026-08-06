@@ -93,6 +93,22 @@ else
   exit 1
 fi
 
+# GitHub reports CI results through two independent mechanisms, and this repo
+# has one CI system on each side of the split:
+#
+#   - Check runs (Checks API)      — GitHub Apps. GitHub Actions reports here.
+#   - Commit statuses (Status API) — the older mechanism. Buildkite's GitHub
+#                                    integration reports here.
+#
+# `/check-runs` returns only the first, `/statuses` only the second, so both
+# have to be queried while both pipelines are live — checking one would look
+# like it worked while being structurally blind to the other system's result.
+#
+# The single-call alternative is GraphQL's `statusCheckRollup`, which merges
+# both, but GitHub's GraphQL API requires authentication even for public
+# repos. Two unauthenticated REST calls keeps a static credential out of this
+# step; swap to the rollup if the ~60 request/hour limit starts biting.
+
 echo "--- Checking GitHub check runs for $SHA"
 
 CHECK_RUNS=$(curl -sf -H "Accept: application/vnd.github+json" \
@@ -101,26 +117,62 @@ CHECK_RUNS=$(curl -sf -H "Accept: application/vnd.github+json" \
   exit 1
 }
 
-TOTAL=$(echo "$CHECK_RUNS" | jq -r '.total_count // 0')
+CHECK_RUN_TOTAL=$(echo "$CHECK_RUNS" | jq -r '.check_runs | length')
+if [ "$CHECK_RUN_TOTAL" -gt 0 ]; then
+  echo "$CHECK_RUNS" | jq -r '.check_runs[] | "  \(.name): \(.status)/\(.conclusion // "-")"'
+else
+  echo "  (none)"
+fi
+
+CHECK_RUNS_NOT_GREEN=$(echo "$CHECK_RUNS" | jq -r \
+  '[.check_runs[] | select(.status != "completed" or .conclusion != "success")] | length')
+
+echo "--- Checking GitHub commit statuses for $SHA"
+
+STATUSES=$(curl -sf -H "Accept: application/vnd.github+json" \
+  "https://api.github.com/repos/${REPO}/commits/${SHA}/statuses") || {
+  write_highlight "**Failing safe** — the GitHub commit-statuses request failed (rate limit, or unknown commit)."
+  exit 1
+}
+
+# The statuses endpoint returns full history, so a context that failed and was
+# later re-run green appears twice. Reduce to the newest entry per context
+# before judging, otherwise a superseded failure blocks forever.
+LATEST_STATUSES=$(echo "$STATUSES" | jq -c \
+  '[group_by(.context)[] | sort_by(.created_at) | last]')
+
+STATUS_TOTAL=$(echo "$LATEST_STATUSES" | jq -r 'length')
+if [ "$STATUS_TOTAL" -gt 0 ]; then
+  echo "$LATEST_STATUSES" | jq -r '.[] | "  \(.context): \(.state)"'
+else
+  echo "  (none)"
+fi
+
+STATUSES_NOT_GREEN=$(echo "$LATEST_STATUSES" | jq -r \
+  '[.[] | select(.state != "success")] | length')
+
+TOTAL=$((CHECK_RUN_TOTAL + STATUS_TOTAL))
+NOT_GREEN=$((CHECK_RUNS_NOT_GREEN + STATUSES_NOT_GREEN))
+
 if [ "$TOTAL" -eq 0 ]; then
-  write_highlight "**Failing safe** — no check runs reported for \`${SHA}\`."
+  write_highlight "**Failing safe** — no check runs *or* commit statuses reported for \`${SHA}\`."
   echo "Either CI hasn't posted results yet or the response was throttled —"
   echo "the two are indistinguishable on an unauthenticated call."
   exit 1
 fi
 
-echo "$CHECK_RUNS" | jq -r '.check_runs[] | "  \(.name): \(.status)/\(.conclusion // "-")"'
-
-NOT_GREEN=$(echo "$CHECK_RUNS" | jq -r \
-  '[.check_runs[] | select(.status != "completed" or .conclusion != "success")] | length')
 if [ "$NOT_GREEN" -gt 0 ]; then
-  write_highlight "**Blocking deployment** — ${NOT_GREEN} of ${TOTAL} GitHub check run(s) are not green for \`${SHA}\`."
+  write_highlight "**Blocking deployment** — ${NOT_GREEN} of ${TOTAL} GitHub check(s) are not green for \`${SHA}\`."
   echo "$CHECK_RUNS" | jq -r \
     '.check_runs[] | select(.status != "completed" or .conclusion != "success")
-     | "  \(.name): \(.status)/\(.conclusion // "-")  \(.html_url)"'
+     | "  check run  \(.name): \(.status)/\(.conclusion // "-")  \(.html_url)"'
+  echo "$LATEST_STATUSES" | jq -r \
+    '.[] | select(.state != "success")
+     | "  status     \(.context): \(.state)  \(.target_url // "-")"'
   exit 1
 fi
-write_highlight "All ${TOTAL} GitHub check run(s) passed."
+
+write_highlight "All ${TOTAL} GitHub check(s) passed — ${CHECK_RUN_TOTAL} check run(s), ${STATUS_TOTAL} commit status(es)."
 
 echo "--- Resolving the pull request behind $SHA"
 

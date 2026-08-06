@@ -1,7 +1,38 @@
+# Generates throwaway commits on a branch, opens a PR, and (optionally) turns
+# on auto-merge — so the whole path exercises itself: PR checks, squash merge,
+# post-merge CI, Buildkite release, and the Validate Release gate.
+#
+# The schedule is here to stress-test that gate, not as a permanent fixture.
+# Comment out the `schedule:` block (or disable the workflow under Actions)
+# once you've generated enough releases to test with. Two things worth knowing
+# about GitHub's cron: it's best-effort and can lag well past the stated
+# interval under load, and scheduled workflows are disabled automatically
+# after 60 days without repository activity.
+
 name: Generate Build Info
 
 on:
-  workflow_dispatch: # Manual trigger
+  workflow_dispatch:
+    inputs:
+      commit_count:
+        description: "Commits to generate. Blank or 'random' picks 3-15."
+        required: false
+        default: "random"
+      auto_merge:
+        description: "Enable auto-merge on the PR so it lands without help."
+        type: boolean
+        required: false
+        default: true
+  schedule:
+    # Every 30 minutes. See the note above before leaving this on.
+    - cron: "*/30 * * * *"
+
+# Each run branches from main and pushes a uniquely-named branch, so parallel
+# runs won't clobber each other — but they would race on build-info.txt's
+# numbering and produce confusing overlapping PRs. Serialize instead.
+concurrency:
+  group: generate-build-info
+  cancel-in-progress: false
 
 jobs:
   generate-build-info:
@@ -55,8 +86,22 @@ jobs:
                     "with a side of caution" "in the most robust way possible"
                     "because the metrics said so")
 
-          NUM_COMMITS=$(( RANDOM % 13 + 3 ))
-          echo "Generating $NUM_COMMITS commits"
+          # A scheduled run has no inputs, so it falls through to random.
+          # Note the random range (3-15) sits at or above the Validate Release
+          # gate's limit of 2, so those PRs are *expected* to be blocked at
+          # deploy time — that's the block path being exercised. Dispatch with
+          # commit_count=1 or 2 to generate releases that should pass instead.
+          REQUESTED="${{ inputs.commit_count }}"
+          if [ -z "$REQUESTED" ] || [ "$REQUESTED" = "random" ]; then
+            NUM_COMMITS=$(( RANDOM % 13 + 3 ))
+            echo "No commit_count given — generating a random $NUM_COMMITS commits"
+          elif ! echo "$REQUESTED" | grep -qE '^[0-9]+$' || [ "$REQUESTED" -lt 1 ]; then
+            echo "commit_count must be a positive integer or 'random', got '$REQUESTED'" >&2
+            exit 1
+          else
+            NUM_COMMITS="$REQUESTED"
+            echo "Generating $NUM_COMMITS commits as requested"
+          fi
 
           BUILD_NUMBER=1
           if [ -f build-info.txt ]; then
@@ -93,12 +138,52 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.ACTIONS_GITHUB_PAT }}
 
       - name: Open PR
+        id: pr
         run: |
-          DATE_STR=$(date +%Y-%m-%d)
-          gh pr create \
+          DATE_STR=$(date -u +"%Y-%m-%d %H:%M UTC")
+          PR_URL=$(gh pr create \
             --base main \
-            --head $BRANCH \
-            --title "Build info update $DATE_STR" \
-            --body "Automated build info commits generated on $DATE_STR for Buildkite CI + Octopus Deploy testing."
+            --head "$BRANCH" \
+            --title "Build info update $DATE_STR ($NUM_COMMITS commits)" \
+            --body "Automated build info commits generated $DATE_STR for Buildkite CI + Octopus Deploy testing.
+
+          Commits in this PR: **$NUM_COMMITS**
+
+          The \`Validate Release\` deployment gate blocks changesets of 3 or more commits, so this PR is expected to $( [ "$NUM_COMMITS" -ge 3 ] && echo "**block** at deploy time." || echo "**pass** the changeset check." )")
+          echo "url=$PR_URL" >> "$GITHUB_OUTPUT"
+          echo "Opened $PR_URL"
         env:
           GH_TOKEN: ${{ secrets.ACTIONS_GITHUB_PAT }}
+
+      # Squash keeps one commit per PR on main, which is what the gate's
+      # commit-count logic assumes — it reads the PR's pre-squash count rather
+      # than diffing the merge commit. Auto-merge only defers the merge if
+      # something is actually pending (required checks or reviews); with no
+      # branch protection on main the PR is immediately mergeable and this
+      # fails, so it soft-fails rather than failing the run.
+      - name: Enable auto-merge
+        if: ${{ github.event_name == 'schedule' || inputs.auto_merge }}
+        run: |
+          if gh pr merge "${{ steps.pr.outputs.url }}" --auto --squash; then
+            echo "Auto-merge enabled."
+          else
+            echo "::warning::Couldn't enable auto-merge. This usually means main has no branch protection requiring status checks, so there's nothing for auto-merge to wait on. Merging directly instead."
+            gh pr merge "${{ steps.pr.outputs.url }}" --squash || \
+              echo "::warning::Direct squash merge also failed — the PR is left open for manual handling."
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.ACTIONS_GITHUB_PAT }}
+
+      - name: Summary
+        run: |
+          {
+            echo "### Generated $NUM_COMMITS commit(s)"
+            echo ""
+            echo "- PR: ${{ steps.pr.outputs.url }}"
+            echo "- Branch: \`$BRANCH\`"
+            if [ "$NUM_COMMITS" -ge 3 ]; then
+              echo "- Expected at deploy time: **blocked** by Validate Release (3+ commits)"
+            else
+              echo "- Expected at deploy time: **passes** the changeset check"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
