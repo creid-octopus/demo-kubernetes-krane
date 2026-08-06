@@ -95,6 +95,17 @@ jobs:
             ${{ env.IMAGE_NAME }}
           version: ${{ steps.meta.outputs.version }}
 
+      # custom_fields mirrors the --custom-field flags the Buildkite pipeline
+      # passes to `octopus release create`, so a release carries the same
+      # provenance metadata whichever CI system produced it. Unlike build
+      # information, custom fields live on the release resource itself and are
+      # readable from anywhere, including deployment steps.
+      #
+      # No BuildNumber field: with two CI systems writing releases to the same
+      # project, their build counters are independent, so a bare number is
+      # ambiguous about which system to go look in — and a run URL is both
+      # unambiguous and directly clickable. Custom field values render as
+      # plain text (Markdown links do not resolve), so the URL goes in raw.
       - name: Create Octopus release
         uses: OctopusDeploy/create-release-action@v3
         with:
@@ -103,6 +114,10 @@ jobs:
           channel: ${{ env.OCTOPUS_CHANNEL }}
           release_number: ${{ steps.meta.outputs.version }}
           package_version: ${{ steps.meta.outputs.version }}
+          custom_fields: |
+            BuildUrl:${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            CommitSha:${{ github.sha }}
+            Branch:${{ github.ref_name }}
 
       - name: Deploy to Development
         uses: OctopusDeploy/deploy-release-action@v3

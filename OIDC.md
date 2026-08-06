@@ -76,6 +76,35 @@ Buildkite and GitHub Actions are different classes of issuer in Octopus:
   building it more than once per merge across the two systems — an accepted
   tradeoff while both are running in parallel.
 
+## Release custom fields
+
+Both pipelines stamp the same three custom fields onto every release they
+create (`--custom-field` on the CLI, `custom_fields:` on
+`OctopusDeploy/create-release-action`):
+
+| Field       | Value                                          |
+| ----------- | ---------------------------------------------- |
+| `BuildUrl`  | Direct link to the CI run that made the release |
+| `CommitSha` | Full 40-char commit SHA                         |
+| `Branch`    | Branch the build ran on                         |
+
+Two decisions worth keeping:
+
+- **No `BuildNumber`.** A build counter is a reliable backtrackable identity
+  when one CI system owns the project — it stops being one the moment two do,
+  because Buildkite's build number and GitHub's `run_number` increment
+  independently and can collide on the same value while pointing at entirely
+  different builds. (This is the same mismatch that made a perfectly healthy
+  image look missing from the GHCR feed: `.8` from Buildkite where `.18` was
+  expected from Actions.) `BuildUrl` is unambiguous, still embeds the number,
+  and is directly clickable.
+- **Values render as plain text.** Custom fields do *not* resolve Markdown, so
+  a `[#12](url)` value displays literally. URLs go in raw.
+
+Unlike build information, custom fields live on the release resource itself
+and are readable anywhere — including from deployment steps, which is where
+`Octopus.Release.Package` / `Octopus.Release.Builds` are unavailable.
+
 ## Where the actual pipeline logic lives
 
 - Buildkite: `.buildkite/pipeline.yml`

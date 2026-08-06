@@ -185,6 +185,12 @@ steps:
         --file BuildInformation.json \
         --space "$$OCTOPUS_SPACE"
 
+      # Custom fields match publish.yml's, so a release reads the same
+      # whichever CI system made it. Deliberately no BuildNumber — Buildkite's
+      # build counter and GitHub's run_number are independent, so a bare
+      # number doesn't say which system to go look in; the build URL does, and
+      # still embeds the number. Values render as plain text on the release
+      # (Markdown links don't resolve), so the URL goes in raw.
       echo "--- :rocket: Create release"
       OCTOPUS_RELEASE=$(octopus release create \
         --project "$$OCTOPUS_PROJECT" \
@@ -192,7 +198,6 @@ steps:
         --version "$$VERSION" \
         --channel "$$OCTOPUS_CHANNEL" \
         --space "$$OCTOPUS_SPACE" \
-        --custom-field "BuildNumber:$$BUILDKITE_BUILD_NUMBER" \
         --custom-field "BuildUrl:$$BUILDKITE_BUILD_URL" \
         --custom-field "CommitSha:$$BUILDKITE_COMMIT" \
         --custom-field "Branch:$$BUILDKITE_BRANCH" \
