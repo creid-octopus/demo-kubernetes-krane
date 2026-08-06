@@ -45,9 +45,34 @@ CMD ["src/server.js"]
 FROM gcr.io/distroless/nodejs20-debian12 AS release
 WORKDIR /app
 COPY --from=base /app /app
+
+# Build args have to be re-declared here — `ARG` is scoped to the stage that
+# declares it, and `COPY --from=base` copies files, not ENV. Without these,
+# every `${APP_*}` reference below resolves to empty and the release image
+# ships unstamped.
+ARG APP_VERSION=0.0.0-local
+ARG APP_BRANCH=local
+ARG APP_BUILD=0
+ARG APP_BUILT_AT
+ARG APP_COMMIT_SHA=local
+
 ENV APP_VERSION=${APP_VERSION} \
+    APP_BRANCH=${APP_BRANCH} \
+    APP_BUILD=${APP_BUILD} \
+    APP_BUILT_AT=${APP_BUILT_AT} \
+    APP_COMMIT_SHA=${APP_COMMIT_SHA} \
     NODE_ENV=production \
     PORT=8080
+
+# Standard OCI labels. Octopus surfaces image labels as deployment variables
+# (`Octopus.Action.Package[<ref>].Image.Labels[<key>]`) but not ENV, so the
+# label is what makes the *full* 40-char commit SHA readable at deploy time —
+# no parsing a 7-char prefix back out of the version string, and independent
+# of whatever versioning scheme the release happens to use.
+LABEL org.opencontainers.image.revision="${APP_COMMIT_SHA}" \
+      org.opencontainers.image.version="${APP_VERSION}" \
+      org.opencontainers.image.source="https://github.com/creid-octopus/demo-kubernetes-krane"
+
 EXPOSE 8080
 ENTRYPOINT ["/nodejs/bin/node"]
 CMD ["src/server.js"]

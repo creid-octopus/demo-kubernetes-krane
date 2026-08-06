@@ -55,6 +55,7 @@ k8s/bindings/                  per-env/region .env files sourced before krane re
 k8s/octopus-permissions-controller/
                                 WorkloadServiceAccount / ClusterWorkloadServiceAccount
                                 RBAC scoping for the real AKS clusters
+scripts/validate-release.sh      Octopus deployment gate — GitHub checks + changeset size
 scripts/deploy.sh               the "Shipit shells out to this" script
 scripts/fan-out.sh              multi-region parallel deploy
 scripts/regions.conf            region → context → bindings-file map
