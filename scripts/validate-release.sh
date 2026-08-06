@@ -46,6 +46,21 @@ REPO="creid-octopus/demo-kubernetes-krane"
 PACKAGE_REF="demo-kubernetes-krane"
 MAX_COMMITS=3
 
+# Not every commit on main arrives via a pull request — this repo is currently
+# high-churn push-to-main. A direct push has no PR to measure, but it also
+# can't *be* a large squashed changeset: it's one commit, which is inside the
+# limit by definition. So the changeset check treats "no associated PR" as a
+# single-commit changeset and warns, rather than blocking.
+#
+# The check-runs gate above it still applies either way — a direct push is
+# only allowed through if its post-push CI is green.
+#
+# Set the Octopus project variable `Project.Gate.RequirePullRequest` to `true`
+# to make a missing PR a hard block instead, once the workflow has moved to
+# PRs and this allowance is no longer wanted.
+REQUIRE_PR="$(get_octopusvariable "Project.Gate.RequirePullRequest" || true)"
+REQUIRE_PR="${REQUIRE_PR:-false}"
+
 echo "--- Resolving the commit SHA"
 
 REVISION_LABEL="$(get_octopusvariable "Octopus.Action.Package[${PACKAGE_REF}].Image.Labels[org.opencontainers.image.revision]" || true)"
@@ -116,31 +131,43 @@ PR_JSON=$(curl -sf -H "Accept: application/vnd.github+json" \
 }
 
 PR_NUMBER=$(echo "$PR_JSON" | jq -r '.[0].number // empty')
+
 if [ -z "$PR_NUMBER" ]; then
-  write_highlight "**Failing safe** — no pull request is associated with \`${SHA}\`, so the changeset size can't be measured."
-  echo "A commit pushed directly to main would look like this."
-  exit 1
+  # Direct push to main — no PR to measure. See REQUIRE_PR above.
+  if [ "$REQUIRE_PR" = "true" ]; then
+    write_highlight "**Blocking deployment** — no pull request is associated with \`${SHA}\`, and \`Project.Gate.RequirePullRequest\` is set."
+    echo "https://github.com/${REPO}/commit/${SHA}"
+    exit 1
+  fi
+
+  COMMIT_COUNT=1
+  CHANGESET_DESC="a direct push (no pull request)"
+  write_highlight "Commit \`${SHA}\` was pushed directly to the branch, with no pull request — counting it as a 1-commit changeset."
+  echo "Set the project variable Project.Gate.RequirePullRequest to 'true' to block this instead."
+  echo "https://github.com/${REPO}/commit/${SHA}"
+else
+  PR_URL="https://github.com/${REPO}/pull/${PR_NUMBER}"
+
+  # Read the commit count off the PR rather than diffing against the merge
+  # commit's parents: these PRs are squash-merged, so the commit on main is
+  # always exactly one commit no matter how large the PR was. The pre-squash
+  # count is the number that actually describes the changeset.
+  COMMIT_COUNT=$(curl -sf -H "Accept: application/vnd.github+json" \
+    "https://api.github.com/repos/${REPO}/pulls/${PR_NUMBER}" | jq -r '.commits // empty')
+
+  if [ -z "$COMMIT_COUNT" ]; then
+    write_highlight "**Failing safe** — couldn't read the commit count for [PR #${PR_NUMBER}](${PR_URL})."
+    exit 1
+  fi
+
+  CHANGESET_DESC="[PR #${PR_NUMBER}](${PR_URL})"
+
+  if [ "$COMMIT_COUNT" -ge "$MAX_COMMITS" ]; then
+    write_highlight "**Blocking deployment** — ${CHANGESET_DESC} represents ${COMMIT_COUNT} commits; the limit is $((MAX_COMMITS - 1))."
+    exit 1
+  fi
+  write_highlight "${CHANGESET_DESC} represents ${COMMIT_COUNT} commit(s), under the limit of ${MAX_COMMITS}."
 fi
-
-# Read the commit count off the PR rather than diffing against the merge
-# commit's parents: these PRs are squash-merged, so the commit on main is
-# always exactly one commit no matter how large the PR was. The pre-squash
-# count is the number that actually describes the changeset.
-COMMIT_COUNT=$(curl -sf -H "Accept: application/vnd.github+json" \
-  "https://api.github.com/repos/${REPO}/pulls/${PR_NUMBER}" | jq -r '.commits // empty')
-
-PR_URL="https://github.com/${REPO}/pull/${PR_NUMBER}"
-
-if [ -z "$COMMIT_COUNT" ]; then
-  write_highlight "**Failing safe** — couldn't read the commit count for [PR #${PR_NUMBER}](${PR_URL})."
-  exit 1
-fi
-
-if [ "$COMMIT_COUNT" -ge "$MAX_COMMITS" ]; then
-  write_highlight "**Blocking deployment** — [PR #${PR_NUMBER}](${PR_URL}) represents ${COMMIT_COUNT} commits; the limit is $((MAX_COMMITS - 1))."
-  exit 1
-fi
-write_highlight "[PR #${PR_NUMBER}](${PR_URL}) represents ${COMMIT_COUNT} commit(s), under the limit of ${MAX_COMMITS}."
 
 echo "--- Gate passed"
-write_highlight "**Release validated** — commit \`${SHA}\`, ${TOTAL} check(s) green, ${COMMIT_COUNT} commit(s) in [PR #${PR_NUMBER}](${PR_URL})."
+write_highlight "**Release validated** — commit \`${SHA}\`, ${TOTAL} check(s) green, ${COMMIT_COUNT} commit(s) from ${CHANGESET_DESC}."
