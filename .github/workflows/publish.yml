@@ -9,12 +9,20 @@
 
 name: Publish
 
+# A squash merge to main *is* a push to main, so the push trigger below
+# already covers merged PRs — no separate `pull_request: types: [closed]`
+# trigger is needed, and adding one would double-fire on every merge.
+#
+# What was actually blocking merged PRs from building: the `paths: app/**`
+# filter. The generated build-info PRs only touch build-info.txt, so nothing
+# fired. The filter is gone deliberately — every commit reaching main should
+# produce an image and a release, so there's always a package for the
+# Validate Release gate to inspect. That does mean doc-only commits build too;
+# an acceptable trade for a demo repo where release volume is the point.
 on:
   push:
     branches:
       - main
-    paths:
-      - "app/**"
   workflow_dispatch:
 
 permissions:
