@@ -1,14 +1,14 @@
 # Octopus integration — real, OIDC-authenticated.
 #
-# Builds the image, uploads build information, and pushes the image to GHCR.
-# It stops there: release creation and deployment belong to Octopus, via the
-# "New Image Version Pushed" feed trigger. No API key anywhere in this
-# workflow.
+# Builds the image, uploads build information, pushes the image to GHCR, and
+# creates the Octopus release with build provenance as custom fields. It stops
+# short of deploying — the Fast Dev lifecycle auto-deploys Development on
+# release creation. No API key anywhere in this workflow.
 #
 # See OIDC.md for the shared design details: the SA-GHA service account and
-# OIDC identity, why release creation moved to the feed trigger, why the image
-# is built here rather than in a separate workflow, and why VERSION carries a
-# `sha-<7 hex>` suffix.
+# OIDC identity, why release creation lives in CI rather than in a feed
+# trigger, why the image is built here rather than in a separate workflow, and
+# why VERSION carries a `sha-<7 hex>` suffix.
 
 name: Publish
 
@@ -41,6 +41,8 @@ env:
   OCTOPUS_SERVER_URL: "https://creid.octopus.app"
   OCTOPUS_SERVICE_ACCOUNT_ID: "d7b6439c-edd8-4f5c-b035-ad3a647807b4"
   OCTOPUS_SPACE: "Default"
+  OCTOPUS_PROJECT: "Kubernetes - Krane"
+  OCTOPUS_CHANNEL: "Default"
 
 jobs:
   publish:
@@ -128,8 +130,45 @@ jobs:
             APP_BUILD=${{ github.run_number }}
             APP_COMMIT_SHA=${{ github.sha }}
 
-      # No create-release or deploy-release step. Octopus owns both, via the
-      # "New Image Version Pushed" feed trigger — see OIDC.md for why.
+      # Release creation lives here rather than in an Octopus feed trigger. The
+      # trigger has no build context — it only sees "a package version appeared"
+      # — so it can't stamp custom fields. Creating the release from CI is the
+      # only way to carry build provenance onto the release itself.
+      #
+      # There's deliberately no deploy-release step: the Fast Dev lifecycle's
+      # Development phase lists Environments-1 as an automatic deployment
+      # target, so creating the release is enough to deploy it.
+      #
+      # Custom field values render as plain text (Markdown links don't resolve),
+      # so URLs go in raw. No BuildNumber — see OIDC.md. Keep in sync with
+      # .buildkite/pipeline.yml.
+      - name: Resolve pull request for this commit
+        id: pr
+        run: |
+          # A squash merge's subject ends with "(#123)". No API call needed, and
+          # an empty result is correct for a direct push to main.
+          PR_NUMBER=$(git log -1 --pretty=%s | grep -oP '\(#\K[0-9]+(?=\)$)' || true)
+          if [ -n "$PR_NUMBER" ]; then
+            echo "Pull request: #$PR_NUMBER"
+          else
+            echo "No pull request in the commit subject — direct push, leaving PullRequest blank."
+          fi
+          echo "number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+
+      - name: Create Octopus release
+        uses: OctopusDeploy/create-release-action@v3
+        with:
+          space: ${{ env.OCTOPUS_SPACE }}
+          project: ${{ env.OCTOPUS_PROJECT }}
+          channel: ${{ env.OCTOPUS_CHANNEL }}
+          release_number: ${{ steps.meta.outputs.version }}
+          package_version: ${{ steps.meta.outputs.version }}
+          custom_fields: |
+            BuildUrl:${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            CommitSha:${{ github.sha }}
+            Branch:${{ github.ref_name }}
+            PullRequest:${{ steps.pr.outputs.number }}
+
       - name: Summary
         run: |
           {

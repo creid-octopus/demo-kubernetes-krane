@@ -5,9 +5,9 @@
 #     Left in place as an ongoing auth canary.
 #
 #   Layer 2 (octopus-publish) — builds the image, uploads build information,
-#     and pushes the image to GHCR. It deliberately stops there: release
-#     creation and deployment belong to Octopus, via the "New Image Version
-#     Pushed" feed trigger (see OIDC.md).
+#     pushes the image to GHCR, and creates the Octopus release with build
+#     provenance as custom fields. It stops short of deploying: the Fast Dev
+#     lifecycle auto-deploys Development on release creation (see OIDC.md).
 #
 # See OIDC.md for the design details shared with publish.yml (the
 # SA-Buildkite service account, OIDC identity, GHCR feed, versioning
@@ -28,6 +28,8 @@ env:
   OCTOPUS_SERVER_URL: "https://creid.octopus.app"
   OCTOPUS_SERVICE_ACCOUNT_ID: "379be2d0-dc30-4e55-9234-60f514c45fca"
   OCTOPUS_SPACE: "Default"
+  OCTOPUS_PROJECT: "Kubernetes - Krane"
+  OCTOPUS_CHANNEL: "Default"
   # build-information is keyed by the real feed package ID, not the
   # deployment process's package reference name. See OIDC.md.
   OCTOPUS_PACKAGE_ID: "creid-octopus/demo-kubernetes-krane"
@@ -165,9 +167,15 @@ steps:
 
       REPO_WEB_URL="https://github.com/creid-octopus/demo-kubernetes-krane"
 
-      COMMITS_JSON=$$(git log "$$COMMIT_RANGE" --pretty=format:'%H%x1f%s' \
-        | while IFS=$$'\x1f' read -r hash subject; do
-            jq -n --arg id "$$hash" --arg comment "$$subject" --arg url "$$REPO_WEB_URL/commit/$$hash" \
+      # Octopus's commit schema is fixed — Id, LinkUrl, Comment, and nothing
+      # else. There's no author field, so the commit's author name is appended
+      # to Comment instead; that's the only place it can surface in release
+      # notes or the build information view. Uses %an (author, who wrote it)
+      # rather than %cn (committer, which rebases and squash-merges rewrite to
+      # whoever performed the merge — often a bot).
+      COMMITS_JSON=$$(git log "$$COMMIT_RANGE" --pretty=format:'%H%x1f%s%x1f%an' \
+        | while IFS=$$'\x1f' read -r hash subject author; do
+            jq -n --arg id "$$hash" --arg comment "$$subject ($$author)" --arg url "$$REPO_WEB_URL/commit/$$hash" \
               '{Id: $$id, LinkUrl: $$url, Comment: $$comment}'
           done | jq -s '.')
 
@@ -195,22 +203,52 @@ steps:
         --file BuildInformation.json \
         --space "$$OCTOPUS_SPACE"
 
-      # Push last, on purpose. The image landing in GHCR is what the Octopus
-      # feed trigger watches, so pushing it is what starts release creation —
-      # everything the release needs (build information above) has to be in
-      # place first, or the trigger can fire against a version that has no
-      # build info attached. Build information is keyed by package ID +
-      # version and is stored independently of the package, so uploading it
+      # Build information is uploaded before the push so it's already attached
+      # by the time the release is created below. It's keyed by package ID +
+      # version and stored independently of the package, so uploading it
       # before the image exists is fine.
-      echo "--- :docker: Push image to GHCR (this is what triggers Octopus)"
+      echo "--- :docker: Push image to GHCR"
       GHCR_PUSH_TOKEN="$$(buildkite-agent secret get GHCRPushToken)"
       echo "$$GHCR_PUSH_TOKEN" | docker login ghcr.io -u "creid-octopus" --password-stdin
       docker push "$$IMAGE_REPO:$$VERSION"
 
+      # Release creation lives here rather than in an Octopus feed trigger.
+      # The trigger has no build context — it only sees "a package version
+      # appeared" — so it can't stamp custom fields. Creating the release from
+      # CI is the only way to carry build provenance onto the release itself.
+      #
+      # There's deliberately no `release deploy` call: the Fast Dev lifecycle's
+      # Development phase lists Environments-1 as an automatic deployment
+      # target, so creating the release is enough to deploy it. Adding an
+      # explicit deploy would duplicate that.
+      #
+      # Custom field values render as plain text (Markdown links don't
+      # resolve), so URLs go in raw. No BuildNumber — see OIDC.md.
+      echo "--- :mag: Resolving the pull request for this commit"
+      # A squash merge's subject ends with "(#123)". No API call needed, and
+      # an empty result is correct for a direct push to main.
+      PR_NUMBER=$$(git log -1 --pretty=%s | grep -oP '\(#\K[0-9]+(?=\)$)' || true)
+      if [ -n "$$PR_NUMBER" ]; then
+        echo "Pull request: #$$PR_NUMBER"
+      else
+        echo "No pull request in the commit subject — direct push, leaving PullRequest blank."
+      fi
+
+      echo "--- :rocket: Create release"
+      octopus release create \
+        --project "$$OCTOPUS_PROJECT" \
+        --package "*:$${VERSION}" \
+        --version "$$VERSION" \
+        --channel "$$OCTOPUS_CHANNEL" \
+        --space "$$OCTOPUS_SPACE" \
+        --custom-field "BuildUrl:$$BUILDKITE_BUILD_URL" \
+        --custom-field "CommitSha:$$BUILDKITE_COMMIT" \
+        --custom-field "Branch:$$BUILDKITE_BRANCH" \
+        --custom-field "PullRequest:$${PR_NUMBER}" \
+        --no-prompt
+
       echo "--- :white_check_mark: Done"
-      echo "Pushed $$IMAGE_REPO:$$VERSION with build information attached."
-      echo "Octopus polls the GHCR feed roughly every 3 minutes; the"
-      echo "'New Image Version Pushed' trigger creates the release and the"
-      echo "Fast Dev lifecycle auto-deploys it to Development from there."
+      echo "Created release $$VERSION. The Fast Dev lifecycle auto-deploys it"
+      echo "to Development; the Validate Release gate runs there first."
     agents:
       queue: "default-queue"

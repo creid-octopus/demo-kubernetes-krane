@@ -103,6 +103,11 @@ jobs:
             echo "Generating $NUM_COMMITS commits as requested"
           fi
 
+          # Each `run:` block is its own shell, so a plain variable doesn't
+          # survive into the "Open PR" and "Summary" steps below — without this
+          # they interpolate an empty string ("( commits)" in the PR title).
+          echo "NUM_COMMITS=$NUM_COMMITS" >> "$GITHUB_ENV"
+
           BUILD_NUMBER=1
           if [ -f build-info.txt ]; then
             LAST_NUM=$(grep -oP '#[Bb]uild #[0-9]+' build-info.txt | grep -oP '[0-9]+' | tail -1)
