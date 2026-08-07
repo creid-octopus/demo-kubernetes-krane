@@ -121,7 +121,16 @@ steps:
       echo "Version: $$VERSION"
 
       echo "--- :docker: Build image"
+      # --provenance=false --sbom=false: without these, BuildKit pushes an OCI
+      # image *index* containing the real image plus an `unknown/unknown`
+      # attestation manifest. Octopus reads that attestation entry's
+      # annotations (vnd.docker.reference.*) as the package's image labels,
+      # so the org.opencontainers.image.revision label the gate looks for is
+      # invisible — and `docker pull` fails on any host whose platform isn't
+      # in the index. A single-manifest push avoids both.
       docker build \
+        --provenance=false \
+        --sbom=false \
         --target release \
         --build-arg APP_VERSION="$$VERSION" \
         --build-arg APP_BRANCH="$$BUILDKITE_BRANCH" \

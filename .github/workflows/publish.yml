@@ -73,11 +73,20 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # provenance/sbom disabled deliberately. build-push-action defaults
+      # provenance on, which pushes an OCI image *index* containing the real
+      # image plus an `unknown/unknown` attestation manifest. Octopus reads
+      # that attestation entry's annotations (vnd.docker.reference.*) as the
+      # package's image labels, hiding org.opencontainers.image.revision from
+      # the Validate Release gate. Keep in sync with .buildkite/pipeline.yml,
+      # which passes the equivalent --provenance=false --sbom=false.
       - name: Build and push image
         uses: docker/build-push-action@v7
         with:
           context: app
           push: true
+          provenance: false
+          sbom: false
           target: release
           tags: ${{ steps.meta.outputs.image_ref }}:${{ steps.meta.outputs.version }}
           build-args: |

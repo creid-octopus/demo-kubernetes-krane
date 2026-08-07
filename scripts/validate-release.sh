@@ -109,68 +109,108 @@ fi
 # repos. Two unauthenticated REST calls keeps a static credential out of this
 # step; swap to the rollup if the ~60 request/hour limit starts biting.
 
-echo "--- Checking GitHub check runs for $SHA"
+# Checks are polled, not sampled once. The image push is what triggers the
+# release, so a deployment routinely starts while the post-merge CI for that
+# same commit is still running — judging instantly would block on "not
+# completed yet", which is a timing artifact rather than a real failure.
+#
+# Three outcomes, and the difference matters:
+#   - any check has FAILED     -> block immediately, no point waiting
+#   - any check still PENDING  -> wait and re-poll
+#   - nothing reported at all  -> wait too; results may not have posted yet
+#
+# Budget note: each poll costs 2 unauthenticated requests against GitHub's
+# ~60/hour per-IP limit — and on Octopus Cloud that IP is a shared dynamic
+# worker, so the budget isn't exclusively yours. The 60s default interval
+# keeps a 10-minute wait to ~20 requests. Shortening it meaningfully is an
+# argument for switching to an authenticated GraphQL statusCheckRollup call.
+POLL_TIMEOUT="$(get_octopusvariable "Project.Gate.CheckTimeoutSeconds" || true)"
+POLL_TIMEOUT="${POLL_TIMEOUT:-600}"
+POLL_INTERVAL="$(get_octopusvariable "Project.Gate.CheckPollSeconds" || true)"
+POLL_INTERVAL="${POLL_INTERVAL:-60}"
 
-CHECK_RUNS=$(curl -sf -H "Accept: application/vnd.github+json" \
-  "https://api.github.com/repos/${REPO}/commits/${SHA}/check-runs") || {
-  write_highlight "**Failing safe** — the GitHub check-runs request failed (rate limit, or unknown commit)."
-  exit 1
-}
+echo "--- Waiting for GitHub checks on $SHA"
+echo "Polling every ${POLL_INTERVAL}s, giving up after ${POLL_TIMEOUT}s."
 
-CHECK_RUN_TOTAL=$(echo "$CHECK_RUNS" | jq -r '.check_runs | length')
-if [ "$CHECK_RUN_TOTAL" -gt 0 ]; then
-  echo "$CHECK_RUNS" | jq -r '.check_runs[] | "  \(.name): \(.status)/\(.conclusion // "-")"'
-else
-  echo "  (none)"
-fi
+DEADLINE=$(( $(date +%s) + POLL_TIMEOUT ))
+ATTEMPT=0
 
-CHECK_RUNS_NOT_GREEN=$(echo "$CHECK_RUNS" | jq -r \
-  '[.check_runs[] | select(.status != "completed" or .conclusion != "success")] | length')
+while true; do
+  ATTEMPT=$((ATTEMPT + 1))
 
-echo "--- Checking GitHub commit statuses for $SHA"
+  CHECK_RUNS=$(curl -sf -H "Accept: application/vnd.github+json" \
+    "https://api.github.com/repos/${REPO}/commits/${SHA}/check-runs") || {
+    write_highlight "**Failing safe** — the GitHub check-runs request failed (rate limit, or unknown commit)."
+    exit 1
+  }
 
-STATUSES=$(curl -sf -H "Accept: application/vnd.github+json" \
-  "https://api.github.com/repos/${REPO}/commits/${SHA}/statuses") || {
-  write_highlight "**Failing safe** — the GitHub commit-statuses request failed (rate limit, or unknown commit)."
-  exit 1
-}
+  STATUSES=$(curl -sf -H "Accept: application/vnd.github+json" \
+    "https://api.github.com/repos/${REPO}/commits/${SHA}/statuses") || {
+    write_highlight "**Failing safe** — the GitHub commit-statuses request failed (rate limit, or unknown commit)."
+    exit 1
+  }
 
-# The statuses endpoint returns full history, so a context that failed and was
-# later re-run green appears twice. Reduce to the newest entry per context
-# before judging, otherwise a superseded failure blocks forever.
-LATEST_STATUSES=$(echo "$STATUSES" | jq -c \
-  '[group_by(.context)[] | sort_by(.created_at) | last]')
+  # The statuses endpoint returns full history, so a context that failed and
+  # was later re-run green appears twice. Reduce to the newest entry per
+  # context before judging, otherwise a superseded failure blocks forever.
+  LATEST_STATUSES=$(echo "$STATUSES" | jq -c \
+    '[group_by(.context)[] | sort_by(.created_at) | last]')
 
-STATUS_TOTAL=$(echo "$LATEST_STATUSES" | jq -r 'length')
-if [ "$STATUS_TOTAL" -gt 0 ]; then
-  echo "$LATEST_STATUSES" | jq -r '.[] | "  \(.context): \(.state)"'
-else
-  echo "  (none)"
-fi
+  CHECK_RUN_TOTAL=$(echo "$CHECK_RUNS" | jq -r '.check_runs | length')
+  STATUS_TOTAL=$(echo "$LATEST_STATUSES" | jq -r 'length')
+  TOTAL=$((CHECK_RUN_TOTAL + STATUS_TOTAL))
 
-STATUSES_NOT_GREEN=$(echo "$LATEST_STATUSES" | jq -r \
-  '[.[] | select(.state != "success")] | length')
+  PENDING=$(( $(echo "$CHECK_RUNS" | jq -r '[.check_runs[] | select(.status != "completed")] | length') \
+            + $(echo "$LATEST_STATUSES" | jq -r '[.[] | select(.state == "pending")] | length') ))
 
-TOTAL=$((CHECK_RUN_TOTAL + STATUS_TOTAL))
-NOT_GREEN=$((CHECK_RUNS_NOT_GREEN + STATUSES_NOT_GREEN))
+  FAILED=$(( $(echo "$CHECK_RUNS" | jq -r '[.check_runs[] | select(.status == "completed" and .conclusion != "success")] | length') \
+           + $(echo "$LATEST_STATUSES" | jq -r '[.[] | select(.state == "failure" or .state == "error")] | length') ))
 
-if [ "$TOTAL" -eq 0 ]; then
-  write_highlight "**Failing safe** — no check runs *or* commit statuses reported for \`${SHA}\`."
-  echo "Either CI hasn't posted results yet or the response was throttled —"
-  echo "the two are indistinguishable on an unauthenticated call."
-  exit 1
-fi
+  echo "[attempt ${ATTEMPT}] ${TOTAL} check(s): ${PENDING} pending, ${FAILED} failed"
+  echo "$CHECK_RUNS" | jq -r '.check_runs[] | "  check run  \(.name): \(.status)/\(.conclusion // "-")"'
+  echo "$LATEST_STATUSES" | jq -r '.[] | "  status     \(.context): \(.state)"'
 
-if [ "$NOT_GREEN" -gt 0 ]; then
-  write_highlight "**Blocking deployment** — ${NOT_GREEN} of ${TOTAL} GitHub check(s) are not green for \`${SHA}\`."
-  echo "$CHECK_RUNS" | jq -r \
-    '.check_runs[] | select(.status != "completed" or .conclusion != "success")
-     | "  check run  \(.name): \(.status)/\(.conclusion // "-")  \(.html_url)"'
-  echo "$LATEST_STATUSES" | jq -r \
-    '.[] | select(.state != "success")
-     | "  status     \(.context): \(.state)  \(.target_url // "-")"'
-  exit 1
-fi
+  # Fail fast — a completed failure won't become a success by waiting.
+  if [ "$FAILED" -gt 0 ]; then
+    write_highlight "**Blocking deployment** — ${FAILED} of ${TOTAL} GitHub check(s) failed for \`${SHA}\`."
+    echo "$CHECK_RUNS" | jq -r \
+      '.check_runs[] | select(.status == "completed" and .conclusion != "success")
+       | "  check run  \(.name): \(.conclusion)  \(.html_url)"'
+    echo "$LATEST_STATUSES" | jq -r \
+      '.[] | select(.state == "failure" or .state == "error")
+       | "  status     \(.context): \(.state)  \(.target_url // "-")"'
+    exit 1
+  fi
+
+  if [ "$TOTAL" -gt 0 ] && [ "$PENDING" -eq 0 ]; then
+    break
+  fi
+
+  NOW=$(date +%s)
+  if [ "$NOW" -ge "$DEADLINE" ]; then
+    if [ "$TOTAL" -eq 0 ]; then
+      write_highlight "**Failing safe** — no check runs *or* commit statuses appeared for \`${SHA}\` within ${POLL_TIMEOUT}s."
+      echo "Either CI never posted results for this commit, or the requests were"
+      echo "throttled — the two are indistinguishable on an unauthenticated call."
+    else
+      write_highlight "**Failing safe** — ${PENDING} of ${TOTAL} GitHub check(s) for \`${SHA}\` were still pending after ${POLL_TIMEOUT}s."
+      echo "$CHECK_RUNS" | jq -r \
+        '.check_runs[] | select(.status != "completed")
+         | "  check run  \(.name): \(.status)  \(.html_url)"'
+      echo "$LATEST_STATUSES" | jq -r \
+        '.[] | select(.state == "pending")
+         | "  status     \(.context): pending  \(.target_url // "-")"'
+    fi
+    exit 1
+  fi
+
+  if [ "$TOTAL" -eq 0 ]; then
+    echo "Nothing reported yet — waiting ${POLL_INTERVAL}s."
+  else
+    echo "Waiting ${POLL_INTERVAL}s for ${PENDING} pending check(s)."
+  fi
+  sleep "$POLL_INTERVAL"
+done
 
 write_highlight "All ${TOTAL} GitHub check(s) passed — ${CHECK_RUN_TOTAL} check run(s), ${STATUS_TOTAL} commit status(es)."
 

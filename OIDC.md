@@ -76,6 +76,33 @@ Buildkite and GitHub Actions are different classes of issuer in Octopus:
   building it more than once per merge across the two systems — an accepted
   tradeoff while both are running in parallel.
 
+## Image attestations are disabled on purpose
+
+Both pipelines build with attestations off — `--provenance=false --sbom=false`
+on the Buildkite `docker build`, `provenance: false` / `sbom: false` on
+`docker/build-push-action` in `publish.yml`.
+
+With attestations on (BuildKit's default when pushing), a tag doesn't resolve
+to an image — it resolves to an OCI image *index* holding two manifests:
+
+```
+Platform: linux/amd64          <- the actual image
+Platform: unknown/unknown      <- attestation manifest
+  Annotations:
+    vnd.docker.reference.digest: sha256:...
+    vnd.docker.reference.type:   attestation-manifest
+```
+
+Octopus surfaces the *attestation* manifest's annotations as the package's
+`Octopus.Action.Package[<ref>].Image.Labels[...]` values, so the
+`org.opencontainers.image.revision` label that `scripts/validate-release.sh`
+reads is invisible, and the gate silently falls back to parsing the short SHA
+out of the version string. A single-manifest push fixes it.
+
+Secondary benefit: `docker pull` against a single-platform index fails on any
+host whose platform isn't listed (e.g. pulling an amd64-only index onto an
+arm64 Mac). Without the index, the plain image pulls fine.
+
 ## Release custom fields
 
 Both pipelines stamp the same three custom fields onto every release they
