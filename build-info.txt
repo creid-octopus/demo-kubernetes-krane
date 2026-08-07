@@ -151,3 +151,6 @@ Drafted container images like my job depended on it
 ---
 # Build #4 | 2026-08-07T20:40:32Z | sha:bfddc79
 Generated gateway configs at 3am because why not
+---
+# Build #5 | 2026-08-07T20:40:32Z | sha:80a281c
+Propelled ingress routes because the metrics said so
