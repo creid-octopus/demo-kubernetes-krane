@@ -76,6 +76,43 @@ Buildkite and GitHub Actions are different classes of issuer in Octopus:
   building it more than once per merge across the two systems — an accepted
   tradeoff while both are running in parallel.
 
+## Annotations vs. labels — what Octopus actually reads
+
+`Octopus.Action.Package[<ref>].Image.Labels[...]` appears to expose OCI
+**manifest annotations**, not Docker **image config labels**. These are two
+different metadata channels that share the `org.opencontainers.image.*` naming
+convention, and a Dockerfile `LABEL` instruction writes only the second one.
+
+The evidence, from `Kubernetes - Krane`:
+
+- With attestations enabled, the only values Octopus reported were
+  `vnd.docker.reference.digest` and `vnd.docker.reference.type` — annotations
+  on the buildx attestation manifest.
+- With attestations disabled, Octopus reported **no labels at all**, while the
+  image itself carried all three expected labels:
+
+  ```
+  docker buildx imagetools inspect <image>:<tag> \
+    --format '{{json .Image.Config.Labels}}'
+  { "org.opencontainers.image.revision": "135edd59...",
+    "org.opencontainers.image.source":   "https://github.com/...",
+    "org.opencontainers.image.version":  "0.1.21-sha-135edd5" }
+  ```
+
+So both pipelines now pass explicit annotations as well as keeping the
+Dockerfile `LABEL` block (the labels remain useful to anything inspecting the
+image directly — `docker inspect`, registry UIs, scanners):
+
+- Buildkite: `--annotation "org.opencontainers.image.revision=$BUILDKITE_COMMIT"` etc.
+- GitHub Actions: the `annotations:` input on `docker/build-push-action`.
+
+This conclusion is inference from those two observations, not confirmed
+against Octopus's implementation — treat it as unverified until a build with
+annotations shows up in a deployment's variable snapshot.
+`scripts/validate-processtemplate.sh` falls back to parsing the `sha-<7 hex>`
+suffix off the package version, which is the proven path, so the gate works
+either way.
+
 ## Image attestations are disabled on purpose
 
 Both pipelines build with attestations off — `--provenance=false --sbom=false`

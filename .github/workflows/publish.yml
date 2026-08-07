@@ -114,6 +114,14 @@ jobs:
           sbom: false
           target: release
           tags: ${{ steps.meta.outputs.image_ref }}:${{ steps.meta.outputs.version }}
+          # Annotations, not just the Dockerfile's LABEL block. Octopus reads
+          # OCI manifest annotations as Image.Labels[...] — a different channel
+          # from Docker image config labels, which is where LABEL writes. See
+          # OIDC.md. Keep in sync with .buildkite/pipeline.yml.
+          annotations: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ steps.meta.outputs.version }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
           build-args: |
             APP_VERSION=${{ steps.meta.outputs.version }}
             APP_BRANCH=${{ github.ref_name }}

@@ -123,9 +123,20 @@ steps:
       # so the org.opencontainers.image.revision label the gate looks for is
       # invisible — and `docker pull` fails on any host whose platform isn't
       # in the index. A single-manifest push avoids both.
+      # --annotation, not just Dockerfile LABEL. Octopus surfaces OCI *manifest
+      # annotations* as Octopus.Action.Package[<ref>].Image.Labels[...], which
+      # is a different metadata channel from Docker image config labels even
+      # though both use the org.opencontainers.image.* naming convention. The
+      # Dockerfile's LABEL block writes config labels only — verified present
+      # via `imagetools inspect --format '{{json .Image.Config.Labels}}'` on an
+      # image where Octopus reported no labels at all. These annotations are
+      # what make the full 40-char SHA readable by the validation gate.
       docker build \
         --provenance=false \
         --sbom=false \
+        --annotation "org.opencontainers.image.revision=$$BUILDKITE_COMMIT" \
+        --annotation "org.opencontainers.image.version=$$VERSION" \
+        --annotation "org.opencontainers.image.source=https://github.com/creid-octopus/demo-kubernetes-krane" \
         --target release \
         --build-arg APP_VERSION="$$VERSION" \
         --build-arg APP_BRANCH="$$BUILDKITE_BRANCH" \
