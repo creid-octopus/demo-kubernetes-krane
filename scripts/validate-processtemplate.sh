@@ -159,6 +159,7 @@ echo "--- Resolving the commit SHA"
 REVISION_LABEL="$(get_octopusvariable "Octopus.Action.Package[${PACKAGE_REF}].Image.Labels[org.opencontainers.image.revision]" || true)"
 SOURCE_LABEL="$(get_octopusvariable "Octopus.Action.Package[${PACKAGE_REF}].Image.Labels[org.opencontainers.image.source]" || true)"
 PACKAGE_VERSION="$(get_octopusvariable "Octopus.Action.Package[${PACKAGE_REF}].PackageVersion" || true)"
+PACKAGE_ID="$(get_octopusvariable "Octopus.Action.Package[${PACKAGE_REF}].PackageId" || true)"
 IMAGE="$(get_octopusvariable "Octopus.Action.Package[${PACKAGE_REF}].Image" || true)"
 
 echo "Candidates:"
@@ -349,3 +350,46 @@ fi
 
 echo "--- Gate passed"
 write_highlight "**Release validated** — commit \`${SHA}\`, ${TOTAL} check(s) green, ${COMMIT_COUNT} commit(s) from ${CHANGESET_DESC}."
+
+# ---------------------------------------------------------------------------
+# Output variables
+# ---------------------------------------------------------------------------
+# Published so later steps consume the package details this step resolved,
+# rather than re-deriving them from the package reference themselves. The point
+# is a single source of truth: whatever package selection this step validated
+# is exactly what downstream steps deploy, and they can't drift apart.
+#
+# Read them as:
+#   #{Octopus.Action[<this action name>].Output.PackageId}
+#   #{Octopus.Action[<this action name>].Output.PackageVersion}
+#   #{Octopus.Action[<this action name>].Output.Image}
+#   #{Octopus.Action[<this action name>].Output.CommitSha}
+#   #{Octopus.Action[<this action name>].Output.CommitCount}
+#   #{Octopus.Action[<this action name>].Output.PullRequestNumber}   (may be empty)
+#
+# Note this doesn't remove the dependency on the action's name — an output
+# variable is still addressed by it. What it removes is the *second* coupling:
+# downstream steps no longer need to know the package reference name too, and
+# they get values that were validated rather than merely re-read.
+echo "--- Publishing output variables"
+set_octopusvariable "PackageId" "$PACKAGE_ID"
+set_octopusvariable "PackageVersion" "$PACKAGE_VERSION"
+set_octopusvariable "Image" "$IMAGE"
+set_octopusvariable "CommitSha" "$SHA"
+set_octopusvariable "CommitCount" "$COMMIT_COUNT"
+set_octopusvariable "PullRequestNumber" "${PR_NUMBER:-}"
+set_octopusvariable "Repository" "$REPO"
+
+echo "  PackageId         = ${PACKAGE_ID}"
+echo "  PackageVersion    = ${PACKAGE_VERSION}"
+echo "  Image             = ${IMAGE}"
+echo "  CommitSha         = ${SHA}"
+echo "  CommitCount       = ${COMMIT_COUNT}"
+echo "  PullRequestNumber = ${PR_NUMBER:-(none)}"
+echo "  Repository        = ${REPO}"
+
+# A downstream step that gets an empty PackageId will fail in a confusing way,
+# so surface the problem here instead.
+if [ -z "$PACKAGE_ID" ] || [ -z "$PACKAGE_VERSION" ]; then
+  write_highlight "**Warning** — PackageId or PackageVersion resolved empty; downstream steps reading these outputs will get blanks."
+fi
