@@ -44,7 +44,7 @@ set -euo pipefail
 
 REPO="creid-octopus/demo-kubernetes-krane"
 PACKAGE_REF="demo-kubernetes-krane"
-MAX_COMMITS=3
+MAX_COMMITS=12
 
 # Not every commit on main arrives via a pull request — this repo is currently
 # high-churn push-to-main. A direct push has no PR to measure, but it also

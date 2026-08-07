@@ -4,9 +4,10 @@
 #     token and trade it for an Octopus access token, no stored API key.
 #     Left in place as an ongoing auth canary.
 #
-#   Layer 2 (octopus-publish) — builds the image, pushes it to GHCR, pushes
-#     build information, creates a release, and deploys to Development —
-#     the same flow publish.yml runs for GitHub Actions.
+#   Layer 2 (octopus-publish) — builds the image, uploads build information,
+#     and pushes the image to GHCR. It deliberately stops there: release
+#     creation and deployment belong to Octopus, via the "New Image Version
+#     Pushed" feed trigger (see OIDC.md).
 #
 # See OIDC.md for the design details shared with publish.yml (the
 # SA-Buildkite service account, OIDC identity, GHCR feed, versioning
@@ -26,15 +27,9 @@
 env:
   OCTOPUS_SERVER_URL: "https://creid.octopus.app"
   OCTOPUS_SERVICE_ACCOUNT_ID: "379be2d0-dc30-4e55-9234-60f514c45fca"
-  OCTOPUS_PROJECT: "Kubernetes - Krane"
-  OCTOPUS_CHANNEL: "Default"
   OCTOPUS_SPACE: "Default"
-  OCTOPUS_ENVIRONMENT: "Development"
-  # build-information is keyed by the real feed package ID; release create
-  # instead uses --package '*:<version>' (confirmed via the CLI's own
-  # interactive mode) — "this version for every package in the release,"
-  # which for this project's single-package deployment process lands the
-  # same as naming it specifically. See OIDC.md.
+  # build-information is keyed by the real feed package ID, not the
+  # deployment process's package reference name. See OIDC.md.
   OCTOPUS_PACKAGE_ID: "creid-octopus/demo-kubernetes-krane"
   IMAGE_REPO: "ghcr.io/creid-octopus/demo-kubernetes-krane"
   VERSION_MAJOR: "0"
@@ -139,11 +134,6 @@ steps:
         -t "$$IMAGE_REPO:$$VERSION" \
         app
 
-      echo "--- :docker: Push image to GHCR"
-      GHCR_PUSH_TOKEN="$$(buildkite-agent secret get GHCRPushToken)"
-      echo "$$GHCR_PUSH_TOKEN" | docker login ghcr.io -u "creid-octopus" --password-stdin
-      docker push "$$IMAGE_REPO:$$VERSION"
-
       echo "--- :information_source: Assemble and push build information"
       COMMITS_API_KEY="$$(buildkite-agent secret get CommitsApiKey || true)"
       LAST_SUCCESSFUL_COMMIT=""
@@ -194,35 +184,22 @@ steps:
         --file BuildInformation.json \
         --space "$$OCTOPUS_SPACE"
 
-      # Custom fields match publish.yml's, so a release reads the same
-      # whichever CI system made it. Deliberately no BuildNumber — Buildkite's
-      # build counter and GitHub's run_number are independent, so a bare
-      # number doesn't say which system to go look in; the build URL does, and
-      # still embeds the number. Values render as plain text on the release
-      # (Markdown links don't resolve), so the URL goes in raw.
-      echo "--- :rocket: Create release"
-      OCTOPUS_RELEASE=$(octopus release create \
-        --project "$$OCTOPUS_PROJECT" \
-        --package "*:$${VERSION}" \
-        --version "$$VERSION" \
-        --channel "$$OCTOPUS_CHANNEL" \
-        --space "$$OCTOPUS_SPACE" \
-        --custom-field "BuildUrl:$$BUILDKITE_BUILD_URL" \
-        --custom-field "CommitSha:$$BUILDKITE_COMMIT" \
-        --custom-field "Branch:$$BUILDKITE_BRANCH" \
-        --output-format json \
-        --no-prompt)
+      # Push last, on purpose. The image landing in GHCR is what the Octopus
+      # feed trigger watches, so pushing it is what starts release creation —
+      # everything the release needs (build information above) has to be in
+      # place first, or the trigger can fire against a version that has no
+      # build info attached. Build information is keyed by package ID +
+      # version and is stored independently of the package, so uploading it
+      # before the image exists is fine.
+      echo "--- :docker: Push image to GHCR (this is what triggers Octopus)"
+      GHCR_PUSH_TOKEN="$$(buildkite-agent secret get GHCRPushToken)"
+      echo "$$GHCR_PUSH_TOKEN" | docker login ghcr.io -u "creid-octopus" --password-stdin
+      docker push "$$IMAGE_REPO:$$VERSION"
 
-      echo "Release created: $$OCTOPUS_RELEASE"
-
-      echo "--- :arrow_forward: Deploy to $$OCTOPUS_ENVIRONMENT"
-      octopus release deploy \
-        --project "$$OCTOPUS_PROJECT" \
-        --version "$$VERSION" \
-        --environment "$$OCTOPUS_ENVIRONMENT" \
-        --space "$$OCTOPUS_SPACE" \
-        --output-format basic \
-        --no-prompt \
-        | octopus task wait
+      echo "--- :white_check_mark: Done"
+      echo "Pushed $$IMAGE_REPO:$$VERSION with build information attached."
+      echo "Octopus polls the GHCR feed roughly every 3 minutes; the"
+      echo "'New Image Version Pushed' trigger creates the release and the"
+      echo "Fast Dev lifecycle auto-deploys it to Development from there."
     agents:
       queue: "default-queue"

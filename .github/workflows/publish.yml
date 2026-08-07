@@ -1,11 +1,14 @@
 # Octopus integration — real, OIDC-authenticated.
 #
-# Builds and pushes the image, pushes build information, creates a release,
-# and deploys to Development — no API key anywhere in this workflow.
+# Builds the image, uploads build information, and pushes the image to GHCR.
+# It stops there: release creation and deployment belong to Octopus, via the
+# "New Image Version Pushed" feed trigger. No API key anywhere in this
+# workflow.
 #
 # See OIDC.md for the shared design details: the SA-GHA service account and
-# OIDC identity, why the image is built here rather than in a separate
-# workflow, and why VERSION carries a `sha-<7 hex>` suffix.
+# OIDC identity, why release creation moved to the feed trigger, why the image
+# is built here rather than in a separate workflow, and why VERSION carries a
+# `sha-<7 hex>` suffix.
 
 name: Publish
 
@@ -37,14 +40,11 @@ env:
   VERSION_MINOR: "1"
   OCTOPUS_SERVER_URL: "https://creid.octopus.app"
   OCTOPUS_SERVICE_ACCOUNT_ID: "d7b6439c-edd8-4f5c-b035-ad3a647807b4"
-  OCTOPUS_PROJECT: "Kubernetes - Krane"
   OCTOPUS_SPACE: "Default"
-  OCTOPUS_CHANNEL: "Default"
-  OCTOPUS_ENVIRONMENT: "Development"
 
 jobs:
   publish:
-    name: Build, publish, and deploy via Octopus
+    name: Build and publish for Octopus
     runs-on: ubuntu-latest
 
     steps:
@@ -63,6 +63,29 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "image_ref=$IMAGE_REF" >> "$GITHUB_OUTPUT"
 
+      # Octopus login and build information come *before* the image push, on
+      # purpose. The image landing in GHCR is what the feed trigger watches,
+      # so pushing it is what starts release creation — build information has
+      # to already be in place or the trigger can fire against a version with
+      # none attached. Build information is keyed by package ID + version and
+      # stored independently of the package, so uploading it before the image
+      # exists is fine. Keep in sync with .buildkite/pipeline.yml.
+      - name: Log into Octopus
+        uses: OctopusDeploy/login@v1
+        with:
+          server: ${{ env.OCTOPUS_SERVER_URL }}
+          service_account_id: ${{ env.OCTOPUS_SERVICE_ACCOUNT_ID }}
+
+      # No push-package step — the image is referenced from the GHCR
+      # external feed directly (see OIDC.md).
+      - name: Push build information
+        uses: OctopusDeploy/push-build-information-action@v4
+        with:
+          space: ${{ env.OCTOPUS_SPACE }}
+          packages: |
+            ${{ env.IMAGE_NAME }}
+          version: ${{ steps.meta.outputs.version }}
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
@@ -80,6 +103,8 @@ jobs:
       # package's image labels, hiding org.opencontainers.image.revision from
       # the Validate Release gate. Keep in sync with .buildkite/pipeline.yml,
       # which passes the equivalent --provenance=false --sbom=false.
+      # This push is what triggers Octopus — nothing after it is required for
+      # the release to be created correctly.
       - name: Build and push image
         uses: docker/build-push-action@v7
         with:
@@ -95,62 +120,18 @@ jobs:
             APP_BUILD=${{ github.run_number }}
             APP_COMMIT_SHA=${{ github.sha }}
 
-      - name: Log into Octopus
-        uses: OctopusDeploy/login@v1
-        with:
-          server: ${{ env.OCTOPUS_SERVER_URL }}
-          service_account_id: ${{ env.OCTOPUS_SERVICE_ACCOUNT_ID }}
-
-      # No push-package step — the image is referenced from the GHCR
-      # external feed directly (see OIDC.md).
-
-      - name: Push build information
-        uses: OctopusDeploy/push-build-information-action@v4
-        with:
-          space: Default
-          packages: |
-            ${{ env.IMAGE_NAME }}
-          version: ${{ steps.meta.outputs.version }}
-
-      # custom_fields mirrors the --custom-field flags the Buildkite pipeline
-      # passes to `octopus release create`, so a release carries the same
-      # provenance metadata whichever CI system produced it. Unlike build
-      # information, custom fields live on the release resource itself and are
-      # readable from anywhere, including deployment steps.
-      #
-      # No BuildNumber field: with two CI systems writing releases to the same
-      # project, their build counters are independent, so a bare number is
-      # ambiguous about which system to go look in — and a run URL is both
-      # unambiguous and directly clickable. Custom field values render as
-      # plain text (Markdown links do not resolve), so the URL goes in raw.
-      - name: Create Octopus release
-        uses: OctopusDeploy/create-release-action@v3
-        with:
-          space: Default
-          project: ${{ env.OCTOPUS_PROJECT }}
-          channel: ${{ env.OCTOPUS_CHANNEL }}
-          release_number: ${{ steps.meta.outputs.version }}
-          package_version: ${{ steps.meta.outputs.version }}
-          custom_fields: |
-            BuildUrl:${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-            CommitSha:${{ github.sha }}
-            Branch:${{ github.ref_name }}
-
-      - name: Deploy to Development
-        uses: OctopusDeploy/deploy-release-action@v3
-        with:
-          space: Default
-          project: ${{ env.OCTOPUS_PROJECT }}
-          release_number: ${{ steps.meta.outputs.version }}
-          environments: |
-            ${{ env.OCTOPUS_ENVIRONMENT }}
-
+      # No create-release or deploy-release step. Octopus owns both, via the
+      # "New Image Version Pushed" feed trigger — see OIDC.md for why.
       - name: Summary
         run: |
           {
             echo "### Publish — \`${{ steps.meta.outputs.version }}\`"
             echo ""
-            echo "Released and deployed \`${{ steps.meta.outputs.version }}\` to"
-            echo "${{ env.OCTOPUS_ENVIRONMENT }} via Octopus, authenticated with"
-            echo "OIDC — no API key anywhere in this workflow."
+            echo "Pushed \`${{ steps.meta.outputs.version }}\` to GHCR with build"
+            echo "information attached, authenticated to Octopus with OIDC — no"
+            echo "API key anywhere in this workflow."
+            echo ""
+            echo "Octopus polls the GHCR feed roughly every 3 minutes; the"
+            echo "\`New Image Version Pushed\` trigger creates the release, and the"
+            echo "Fast Dev lifecycle auto-deploys it to Development."
           } >> "$GITHUB_STEP_SUMMARY"

@@ -103,10 +103,56 @@ Secondary benefit: `docker pull` against a single-platform index fails on any
 host whose platform isn't listed (e.g. pulling an amd64-only index onto an
 arm64 Mac). Without the index, the plain image pulls fine.
 
-## Release custom fields
+## Octopus owns release creation, not the pipelines
 
-Both pipelines stamp the same three custom fields onto every release they
-create (`--custom-field` on the CLI, `custom_fields:` on
+Neither pipeline calls `release create` or `release deploy`. Both stop after
+pushing the image. Release creation belongs to the project's **New Image
+Version Pushed** trigger (`ProjectTriggers-21`), a feed filter on the
+`validate-release` step's `demo-kubernetes-krane` package reference, whose
+action is `CreateRelease` on the `Default` channel. Octopus polls the GHCR
+feed roughly every 3 minutes; the `Fast Dev` lifecycle's Development phase has
+`Environments-1` as an automatic deployment target, so the release deploys
+itself from there.
+
+Why this is better than driving it from CI:
+
+- **It fixes a race.** The image push is what triggers the release, so
+  creating the release in-pipeline meant deployments started seconds after the
+  push — while the post-merge CI for that same commit was often still running.
+  The `Validate Release` gate then blocked on "not completed yet", which is a
+  timing artifact rather than a real failure. The feed's polling interval
+  gives checks time to settle. (The gate polls too, so both halves tolerate
+  the timing rather than depending on it.)
+- **One release per image, not one per CI system.** With both pipelines
+  creating releases, every merge produced two, on independent build counters.
+- **The two pipelines converge.** Their only job now is "produce an image and
+  its build information"; everything downstream is identical regardless of
+  origin.
+
+The cost: **release custom fields are gone.** A trigger-created release has no
+way to set them, so `BuildUrl` / `CommitSha` / `Branch` are no longer stamped
+on the release. That metadata isn't lost — it all lives in the build
+information each pipeline uploads (`BuildUrl`, `BuildNumber`,
+`BuildEnvironment`, `VcsCommitNumber`, `Branch`, and the per-commit
+`Commits[]` array) — but it's reachable through build information and release
+notes rather than as release fields.
+
+**Ordering matters in both pipelines**: build information is uploaded *before*
+the image is pushed. The push is the trigger, so anything the release needs
+has to exist first, or the trigger can fire against a version with no build
+information attached. Build information is keyed by package ID + version and
+stored independently of the package, so uploading it before the image exists
+is fine.
+
+## Release custom fields (historical)
+
+Superseded by the section above — releases are now created by the feed
+trigger, which can't set custom fields. Kept because the reasoning still
+applies to the equivalent build information fields, and in case release
+creation ever moves back into the pipelines.
+
+Both pipelines used to stamp three custom fields onto every release they
+created (`--custom-field` on the CLI, `custom_fields:` on
 `OctopusDeploy/create-release-action`):
 
 | Field       | Value                                          |
