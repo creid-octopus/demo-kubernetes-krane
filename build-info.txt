@@ -124,3 +124,6 @@
 ---
 # Build #1 | 2026-08-07T18:56:41Z | sha:ab8c231
 Conjured infrastructure specs because the cluster demanded it
+---
+# Build #2 | 2026-08-07T18:56:41Z | sha:4f70fd9
+Anchored gateway configs with a side of caution
