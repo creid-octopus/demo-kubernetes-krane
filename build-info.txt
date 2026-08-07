@@ -61,3 +61,6 @@ Turbocharged cluster state because the cluster demanded it
 ---
 # Build #3 | 2026-08-07T09:31:49Z | sha:40722f9
 Anchored service manifests because someone had to
+---
+# Build #4 | 2026-08-07T09:31:49Z | sha:17919f4
+Forged cluster telemetry with a side of caution
