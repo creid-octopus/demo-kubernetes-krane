@@ -133,3 +133,6 @@ Turbocharged cluster state because the cluster demanded it
 ---
 # Build #4 | 2026-08-07T18:56:41Z | sha:378147e
 Supercharged build artifacts because someone had to
+---
+# Build #5 | 2026-08-07T18:56:41Z | sha:a3b3fd4
+Conjured gateway configs at 3am because why not
