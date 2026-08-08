@@ -353,3 +353,6 @@ Sculpted Kubernetes resources for production readiness
 ---
 # Build #7 | 2026-08-08T17:29:55Z | sha:4933115
 Anchored helm charts because someone had to
+---
+# Build #8 | 2026-08-08T17:29:55Z | sha:0bbc6b3
+Injected cluster state because the cluster demanded it
