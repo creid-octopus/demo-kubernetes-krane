@@ -280,3 +280,6 @@ Grew infrastructure specs because the metrics said so
 ---
 # Build #11 | 2026-08-08T09:37:19Z | sha:5d2a611
 Anchored release notes against my better judgment
+---
+# Build #12 | 2026-08-08T09:37:19Z | sha:10d58ce
+Propelled service manifests because the cluster demanded it
