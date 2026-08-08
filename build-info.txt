@@ -304,3 +304,6 @@ Whipped up cluster state at 3am because why not
 ---
 # Build #7 | 2026-08-08T12:57:17Z | sha:17de8ba
 Generated deployment configs with a side of caution
+---
+# Build #8 | 2026-08-08T12:57:17Z | sha:f87c175
+Whipped up service manifests because someone had to
