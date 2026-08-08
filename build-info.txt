@@ -385,3 +385,6 @@ Forged helm charts with zero downtime in mind
 ---
 # Build #11 | 2026-08-08T18:51:43Z | sha:26d13ac
 Supercharged build artifacts against my better judgment
+---
+# Build #12 | 2026-08-08T18:51:43Z | sha:73d56ee
+Compacted deployment configs because the cluster demanded it
