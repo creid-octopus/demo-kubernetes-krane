@@ -321,3 +321,6 @@ Spun up Kubernetes resources like my job depended on it
 ---
 # Build #4 | 2026-08-08T15:58:42Z | sha:9a65146
 Anchored cluster state with zero downtime in mind
+---
+# Build #5 | 2026-08-08T15:58:42Z | sha:d88af11
+Drafted cluster telemetry because the metrics said so
