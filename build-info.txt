@@ -268,3 +268,6 @@ Anchored service manifests for production readiness
 ---
 # Build #7 | 2026-08-08T09:37:19Z | sha:8ca7ae4
 Compacted infrastructure specs because someone had to
+---
+# Build #8 | 2026-08-08T09:37:19Z | sha:0d47852
+Compacted deployment pipelines at 3am because why not
