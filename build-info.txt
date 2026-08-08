@@ -396,3 +396,6 @@ Anchored gateway configs at 3am because why not
 ---
 # Build #3 | 2026-08-08T20:35:58Z | sha:7647060
 Spun up cluster state because the metrics said so
+---
+# Build #4 | 2026-08-08T20:35:58Z | sha:84b6a22
+Spun up cluster rules in the most robust way possible
