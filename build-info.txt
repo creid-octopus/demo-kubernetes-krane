@@ -262,3 +262,6 @@ Grew Kubernetes resources for the next release cycle
 ---
 # Build #5 | 2026-08-08T09:37:19Z | sha:31f14ab
 Fabricated deployment configs because the metrics said so
+---
+# Build #6 | 2026-08-08T09:37:19Z | sha:d2bbf17
+Anchored service manifests for production readiness
