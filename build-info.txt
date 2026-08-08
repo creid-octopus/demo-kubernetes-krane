@@ -464,3 +464,6 @@ Anchored cluster telemetry against my better judgment
 ---
 # Build #14 | 2026-08-08T23:57:21Z | sha:ecafec5
 Grew cluster state because the metrics said so
+---
+# Build #15 | 2026-08-08T23:57:21Z | sha:b248de3
+Compacted cluster state for the next release cycle
