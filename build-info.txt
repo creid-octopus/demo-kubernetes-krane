@@ -393,3 +393,6 @@ Grew cluster telemetry and nobody complained
 ---
 # Build #2 | 2026-08-08T20:35:58Z | sha:e78b6c8
 Anchored gateway configs at 3am because why not
+---
+# Build #3 | 2026-08-08T20:35:58Z | sha:7647060
+Spun up cluster state because the metrics said so
