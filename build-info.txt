@@ -406,3 +406,6 @@ Fabricated service manifests because the cluster demanded it
 ---
 # Build #4 | 2026-08-08T21:29:52Z | sha:059add7
 Forged helm charts against my better judgment
+---
+# Build #5 | 2026-08-08T21:29:52Z | sha:69bca13
+Whipped up cluster rules with a side of caution
