@@ -306,3 +306,6 @@ Compacted service manifests for production readiness
 ---
 # Build #5 | 2026-08-08T13:49:50Z | sha:c0231ce
 Turbocharged release notes against my better judgment
+---
+# Build #6 | 2026-08-08T13:49:50Z | sha:5dfc39d
+Compacted container images for production readiness
