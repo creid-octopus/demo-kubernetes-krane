@@ -350,3 +350,6 @@ Whipped up cluster rules before morning standup
 ---
 # Build #6 | 2026-08-08T17:29:55Z | sha:a2dac02
 Sculpted Kubernetes resources for production readiness
+---
+# Build #7 | 2026-08-08T17:29:55Z | sha:4933115
+Anchored helm charts because someone had to
