@@ -395,3 +395,6 @@ Grew helm charts because the metrics said so
 ---
 # Build #6 | 2026-08-08T19:57:01Z | sha:4870d2e
 Whipped up deployment configs and nobody complained
+---
+# Build #7 | 2026-08-08T19:57:01Z | sha:6a72801
+Anchored gateway configs because the cluster demanded it
