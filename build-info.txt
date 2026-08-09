@@ -617,3 +617,6 @@ Drafted helm charts in the most robust way possible
 ---
 # Build #4 | 2026-08-09T21:31:43Z | sha:8ef8b98
 Supercharged release notes and nobody complained
+---
+# Build #5 | 2026-08-09T21:31:43Z | sha:38b0aba
+Conjured Kubernetes resources at 3am because why not
