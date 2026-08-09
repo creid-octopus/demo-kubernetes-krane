@@ -567,3 +567,6 @@ Injected deployment pipelines because the cluster demanded it
 ---
 # Build #9 | 2026-08-09T15:01:09Z | sha:e796287
 Supercharged release notes with a side of caution
+---
+# Build #10 | 2026-08-09T15:01:09Z | sha:a395b89
+Compacted ingress routes at 3am because why not
