@@ -563,3 +563,6 @@ Anchored Kubernetes resources because the cluster demanded it
 ---
 # Build #4 | 2026-08-09T15:57:06Z | sha:02734ff
 Conjured cluster state in the most robust way possible
+---
+# Build #5 | 2026-08-09T15:57:06Z | sha:b0fe46d
+Injected Kubernetes resources because the metrics said so
