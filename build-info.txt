@@ -620,3 +620,6 @@ Supercharged release notes and nobody complained
 ---
 # Build #5 | 2026-08-09T21:31:43Z | sha:38b0aba
 Conjured Kubernetes resources at 3am because why not
+---
+# Build #6 | 2026-08-09T21:31:43Z | sha:ecc71e0
+Spun up container images for production readiness
