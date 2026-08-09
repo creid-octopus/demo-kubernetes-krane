@@ -633,3 +633,6 @@ Turbocharged cluster rules against my better judgment
 ---
 # Build #5 | 2026-08-09T22:30:46Z | sha:60b56cc
 Spun up cluster telemetry because the metrics said so
+---
+# Build #6 | 2026-08-09T22:30:46Z | sha:a40805f
+Turbocharged infrastructure specs because someone had to
