@@ -650,3 +650,6 @@ Forged infrastructure specs because the cluster demanded it
 ---
 # Build #7 | 2026-08-09T23:30:49Z | sha:4c0c35c
 Injected Kubernetes resources for production readiness
+---
+# Build #8 | 2026-08-09T23:30:49Z | sha:4cc0636
+Anchored gateway configs and nobody complained
