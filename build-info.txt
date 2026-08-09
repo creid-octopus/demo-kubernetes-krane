@@ -533,3 +533,6 @@ Grew cluster state because the cluster demanded it
 ---
 # Build #11 | 2026-08-09T11:28:39Z | sha:bbb7f0b
 Conjured infrastructure specs and nobody complained
+---
+# Build #12 | 2026-08-09T11:28:39Z | sha:cd086b3
+Anchored cluster rules because the cluster demanded it
