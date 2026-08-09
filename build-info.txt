@@ -630,3 +630,6 @@ Drafted cluster rules with full test coverage (allegedly)
 ---
 # Build #4 | 2026-08-09T22:30:46Z | sha:17ee24a
 Turbocharged cluster rules against my better judgment
+---
+# Build #5 | 2026-08-09T22:30:46Z | sha:60b56cc
+Spun up cluster telemetry because the metrics said so
