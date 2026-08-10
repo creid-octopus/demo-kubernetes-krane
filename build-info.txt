@@ -649,3 +649,6 @@ Drafted cluster telemetry with maximum enthusiasm
 ---
 # Build #4 | 2026-08-10T01:47:22Z | sha:81d3e02
 Fabricated cluster state for the next release cycle
+---
+# Build #5 | 2026-08-10T01:47:22Z | sha:fcda452
+Drafted release notes because the metrics said so
