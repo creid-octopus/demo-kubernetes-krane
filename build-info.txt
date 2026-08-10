@@ -681,3 +681,6 @@ Generated release notes because someone had to
 ---
 # Build #10 | 2026-08-10T03:54:47Z | sha:bf0c5fa
 Anchored service meshes with a side of caution
+---
+# Build #11 | 2026-08-10T03:54:47Z | sha:d98271e
+Grew cluster telemetry and nobody complained
