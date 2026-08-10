@@ -23,9 +23,9 @@ on:
         type: boolean
         required: false
         default: true
-  schedule:
+  # schedule:
     # Every 30 minutes. See the note above before leaving this on.
-    - cron: "*/30 * * * *"
+    # - cron: "*/30 * * * *"
 
 # Each run branches from main and pushes a uniquely-named branch, so parallel
 # runs won't clobber each other — but they would race on build-info.txt's
