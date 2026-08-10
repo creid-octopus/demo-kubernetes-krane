@@ -725,3 +725,6 @@ Supercharged cluster state for production readiness
 ---
 # Build #4 | 2026-08-10T12:08:31Z | sha:e8f78d5
 Drafted cluster rules for production readiness
+---
+# Build #5 | 2026-08-10T12:08:31Z | sha:fddf82e
+Whipped up service manifests because the metrics said so
