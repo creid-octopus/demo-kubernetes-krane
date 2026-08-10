@@ -667,3 +667,6 @@ Conjured release notes against my better judgment
 ---
 # Build #10 | 2026-08-10T01:47:22Z | sha:b9b5b1c
 Injected service manifests like my job depended on it
+---
+# Build #11 | 2026-08-10T01:47:22Z | sha:29fa46e
+Whipped up service meshes because the metrics said so
