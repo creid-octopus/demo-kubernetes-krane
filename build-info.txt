@@ -664,3 +664,6 @@ Drafted service manifests and nobody complained
 ---
 # Build #9 | 2026-08-10T01:47:22Z | sha:026a453
 Conjured release notes against my better judgment
+---
+# Build #10 | 2026-08-10T01:47:22Z | sha:b9b5b1c
+Injected service manifests like my job depended on it
