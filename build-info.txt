@@ -689,18 +689,11 @@
 # Build #6 | 2026-08-10T06:52:15Z | sha:2b30239
 # Build #7 | 2026-08-10T06:52:15Z | sha:be6af8b
 # Build #8 | 2026-08-10T06:52:15Z | sha:8292230
----
 # Build #1 | 2026-08-10T08:26:41Z | sha:3a25760
-Compacted gateway configs for the next release cycle
----
 # Build #2 | 2026-08-10T08:26:41Z | sha:90e35cf
-Turbocharged cluster telemetry at 3am because why not
----
 # Build #3 | 2026-08-10T08:26:41Z | sha:ba47be4
-Conjured Kubernetes resources in the most robust way possible
----
 # Build #4 | 2026-08-10T08:26:41Z | sha:b566713
-Compacted infrastructure specs with maximum enthusiasm
----
 # Build #5 | 2026-08-10T08:26:41Z | sha:3091220
-Drafted infrastructure specs because the metrics said so
+---
+# Build #1 | 2026-08-10T09:58:24Z | sha:837ad12
+Turbocharged release notes in the most robust way possible
