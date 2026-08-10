@@ -699,3 +699,6 @@ Drafted release notes for production readiness
 ---
 # Build #6 | 2026-08-10T06:52:15Z | sha:2b30239
 Injected cluster telemetry against my better judgment
+---
+# Build #7 | 2026-08-10T06:52:15Z | sha:be6af8b
+Supercharged service meshes like my job depended on it
