@@ -722,3 +722,6 @@ Whipped up cluster telemetry against my better judgment
 ---
 # Build #3 | 2026-08-10T12:08:31Z | sha:789bd06
 Supercharged cluster state for production readiness
+---
+# Build #4 | 2026-08-10T12:08:31Z | sha:e8f78d5
+Drafted cluster rules for production readiness
